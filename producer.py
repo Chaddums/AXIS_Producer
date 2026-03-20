@@ -56,13 +56,14 @@ class BatchProducer:
     def __init__(self, stop_event: threading.Event,
                  buffer_lock: threading.Lock, transcript_buffer: list[str],
                  log_path: str, interval: int = BATCH_INTERVAL_SEC,
-                 verbose: bool = False):
+                 verbose: bool = False, on_items_logged=None):
         self.stop_event = stop_event
         self.buffer_lock = buffer_lock
         self.transcript_buffer = transcript_buffer
         self.log_path = log_path
         self.interval = interval
         self.verbose = verbose
+        self.on_items_logged = on_items_logged  # callback(list[tuple[str, str]]) — (category, text)
 
         self.force_batch = threading.Event()
         self._batch_count = 0
@@ -127,6 +128,29 @@ class BatchProducer:
 
         if self.verbose:
             print(f"  [producer] batch {self._batch_count} logged")
+
+        # Extract items and fire callback for taskbar notifications
+        if self.on_items_logged:
+            items = self._extract_items(notes)
+            if items:
+                try:
+                    self.on_items_logged(items)
+                except Exception as e:
+                    if self.verbose:
+                        print(f"  [producer] callback error: {e}")
+
+    @staticmethod
+    def _extract_items(notes: str) -> list[tuple[str, str]]:
+        """Parse Claude's structured notes into (category, text) tuples."""
+        items = []
+        current_category = None
+        for line in notes.split("\n"):
+            line = line.strip()
+            if line.startswith("## "):
+                current_category = line[3:].strip()
+            elif line.startswith("- ") and current_category:
+                items.append((current_category, line[2:].strip()))
+        return items
 
     def _write_header(self):
         started = datetime.now().strftime("%Y-%m-%d %H:%M")

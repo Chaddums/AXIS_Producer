@@ -53,7 +53,8 @@ class SessionController:
                  on_sweep_ready=None,
                  on_blocker=None,
                  on_briefing=None,
-                 on_scope_alert=None):
+                 on_scope_alert=None,
+                 on_items_logged=None):
         self.settings = settings
         self.on_state_change = on_state_change        # callback(State)
         self.on_speech_detected = on_speech_detected  # callback() — show popup
@@ -66,6 +67,7 @@ class SessionController:
         self.on_blocker = on_blocker                          # callback(type, blocker)
         self.on_briefing = on_briefing                        # callback(Briefing)
         self.on_scope_alert = on_scope_alert                  # callback(ScopeAlert)
+        self.on_items_logged = on_items_logged                # callback(list[(category, text)])
 
         self._state = State.IDLE
         self._lock = threading.Lock()
@@ -269,6 +271,7 @@ class SessionController:
             log_path=log_path,
             interval=self.settings.batch_interval,
             verbose=verbose,
+            on_items_logged=self.on_items_logged,
         )
 
         # Start threads

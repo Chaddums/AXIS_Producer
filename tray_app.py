@@ -41,6 +41,7 @@ class TrayApp:
             on_blocker=self._on_blocker,
             on_briefing=self._on_briefing,
             on_scope_alert=self._on_scope_alert,
+            on_items_logged=self._on_items_logged,
         )
 
         # Tkinter runs on its own daemon thread for popup dialogs
@@ -226,6 +227,10 @@ class TrayApp:
         """Called from ScopeGuard on scope creep or overcommitment."""
         self._tk_queue.put(("scope_alert", alert))
 
+    def _on_items_logged(self, items):
+        """Called after each batch — show brief taskbar toast summarizing logged items."""
+        self._tk_queue.put(("items_logged", items))
+
     # ----- Tkinter thread (for dialogs) -----
 
     def _tk_loop(self):
@@ -260,6 +265,8 @@ class TrayApp:
                     self._show_briefing(msg[1])
                 elif msg[0] == "scope_alert":
                     self._show_scope_alert(msg[1])
+                elif msg[0] == "items_logged":
+                    self._show_items_toast(msg[1])
         except queue.Empty:
             pass
         if self._tk_root:
@@ -800,6 +807,67 @@ class TrayApp:
         # Critical blockers stay longer
         timeout = 12000 if blocker.severity == "critical" else 8000
         toast.after(timeout, lambda: toast.destroy() if toast.winfo_exists() else None)
+
+    # ----- Items logged toast -----
+
+    def _show_items_toast(self, items: list):
+        """Show a compact taskbar toast summarizing items from the latest batch.
+        Each item is a (category, text) tuple."""
+        if not items:
+            return
+
+        # Category → emoji mapping
+        emoji = {
+            "Action Items": "📋",
+            "Blockers": "🚫",
+            "Open Questions": "❓",
+            "Decisions": "✅",
+            "Ideas": "💡",
+            "Watch List": "👁",
+        }
+
+        # Build summary lines (max 5)
+        lines = []
+        for cat, text in items[:5]:
+            icon = emoji.get(cat, "•")
+            short = text[:60] + ("..." if len(text) > 60 else "")
+            lines.append(f"{icon} {cat}: {short}")
+        if len(items) > 5:
+            lines.append(f"  ...and {len(items) - 5} more")
+
+        toast = tk.Toplevel(self._tk_root)
+        toast.title("AXIS Notes")
+        toast.attributes("-topmost", True)
+        toast.overrideredirect(True)
+
+        height = 40 + len(lines) * 22
+        screen_w = toast.winfo_screenwidth()
+        screen_h = toast.winfo_screenheight()
+        toast.geometry(f"420x{height}+{screen_w - 440}+{screen_h - height - 60}")
+
+        frame = tk.Frame(toast, bg="#2a6090", padx=2, pady=2)
+        frame.pack(fill="both", expand=True)
+
+        inner = tk.Frame(frame, bg="#0e1225")
+        inner.pack(fill="both", expand=True)
+
+        tk.Label(
+            inner, text=f"AXIS — {len(items)} item{'s' if len(items) != 1 else ''} logged",
+            bg="#0e1225", fg="#4ac0ff",
+            font=("Consolas", 10, "bold"), anchor="w",
+        ).pack(fill="x", padx=8, pady=(6, 2))
+
+        for line in lines:
+            tk.Label(
+                inner, text=line,
+                bg="#0e1225", fg="#cccccc",
+                font=("Consolas", 9), anchor="w", wraplength=400,
+            ).pack(fill="x", padx=8, pady=1)
+
+        for widget in [toast, frame, inner]:
+            widget.bind("<Button-1>", lambda e: toast.destroy())
+
+        toast.after(8000, lambda: toast.destroy() if toast.winfo_exists() else None)
 
     def _show_blockers_panel(self):
         """Show all tracked blockers in a panel."""

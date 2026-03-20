@@ -299,11 +299,22 @@ def check_blockers():
 def check_scope():
     print("\n8. SCOPE GUARD")
 
+    def _find_roadmap():
+        from settings import Settings
+        s = Settings.load()
+        for c in [s.roadmap_path,
+                  os.path.join(os.path.dirname(__file__), "ALPHA_ROADMAP.md"),
+                  os.path.join(os.path.dirname(__file__), "..", "..", "ALPHA_ROADMAP.md")]:
+            if c and os.path.exists(os.path.normpath(c)):
+                return os.path.normpath(c)
+        return None
+
+    roadmap_path = _find_roadmap()
+    no_roadmap = roadmap_path is None
+
     def _roadmap():
         from scope_guard import RoadmapState
-        path = os.path.join(os.path.dirname(__file__), "..", "..", "ALPHA_ROADMAP.md")
-        path = os.path.normpath(path)
-        roadmap = RoadmapState(path)
+        roadmap = RoadmapState(roadmap_path)
         assert len(roadmap.cut_items) >= 10, f"Only {len(roadmap.cut_items)} CUT items"
         return f"{len(roadmap.cut_items)} CUT, {len(roadmap.todo_items)} TODO, " \
                f"{len(roadmap.wip_items)} WIP, {len(roadmap.done_items)} DONE"
@@ -311,8 +322,7 @@ def check_scope():
     def _detection():
         from scope_guard import ScopeGuard
         alerts = []
-        path = os.path.join(os.path.dirname(__file__), "..", "..", "ALPHA_ROADMAP.md")
-        guard = ScopeGuard(roadmap_path=os.path.normpath(path),
+        guard = ScopeGuard(roadmap_path=roadmap_path,
                            on_alert=lambda a: alerts.append(a))
         guard.check_transcript(
             "What if we also add multiplayer support?\n"
@@ -323,8 +333,11 @@ def check_scope():
         types = [a.type for a in alerts]
         return f"{len(alerts)} alerts: {', '.join(types)}"
 
-    check("Roadmap parsing", _roadmap)
-    check("Scope creep + CUT detection", _detection)
+    check("Roadmap parsing", _roadmap,
+          skip_condition=no_roadmap,
+          skip_reason="No ALPHA_ROADMAP.md found (set roadmap_path in settings)")
+    check("Scope creep + CUT detection", _detection,
+          skip_condition=no_roadmap, skip_reason="No roadmap")
 
 
 # ---------------------------------------------------------------------------
@@ -334,17 +347,30 @@ def check_scope():
 def check_vcs():
     print("\n9. VCS MONITOR")
 
+    def _find_repo():
+        from settings import Settings
+        s = Settings.load()
+        for c in [s.vcs_repo_path,
+                  os.path.dirname(__file__),
+                  os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))]:
+            if c and os.path.isdir(os.path.join(os.path.normpath(c), ".git")):
+                return os.path.normpath(c)
+        return None
+
+    repo_path = _find_repo()
+
     def _git():
         from vcs_monitor import GitBackend
-        repo = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
-        backend = GitBackend(repo)
+        backend = GitBackend(repo_path)
         branch = backend.current_branch()
-        assert branch, "No branch detected"
+        assert branch and branch != "unknown", "No branch detected"
         since = datetime.now() - timedelta(days=7)
         changes = backend.recent_changes(since, limit=5)
         return f"branch={branch}, {len(changes)} commits in 7d"
 
-    check("Git backend", _git)
+    check("Git backend", _git,
+          skip_condition=repo_path is None,
+          skip_reason="No git repo found (set vcs_repo_path in settings)")
 
 
 # ---------------------------------------------------------------------------
@@ -399,7 +425,9 @@ def check_briefings():
 
     def _standup():
         from daily_briefing import generate_standup
-        repo = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        from settings import Settings
+        s = Settings.load()
+        repo = s.vcs_repo_path or ""
         b = generate_standup(repo_path=repo)
         assert b.type == "standup"
         assert len(b.body) > 20
