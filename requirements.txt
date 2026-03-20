@@ -1,0 +1,8 @@
+sounddevice>=0.4.6
+webrtcvad-wheels>=2.0.10  # prebuilt binary, no C compiler needed on Windows
+faster-whisper>=1.0.0
+anthropic>=0.40.0
+numpy>=1.24.0
+pystray>=0.19.0           # system tray icon (tray_app.py)
+Pillow>=9.0.0             # icon generation for tray app
+pywin32>=306              # Outlook COM access for email_monitor.py (Windows only)

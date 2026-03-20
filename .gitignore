@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+digest.db
+tray_settings.json
+triage_training.json
+triage_analytics.json
+session_log.md
+*.wav
+*.mp3
