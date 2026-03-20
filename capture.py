@@ -48,6 +48,13 @@ class AudioCapture:
         # Convert float32 → int16 PCM (what webrtcvad expects)
         pcm = (indata[:, 0] * 32767).astype(np.int16)
 
+        # Resample from native rate to 16000Hz if needed
+        if getattr(self, '_needs_resample', False):
+            ratio = SAMPLE_RATE / self._native_rate
+            new_len = int(len(pcm) * ratio)
+            indices = np.arange(new_len) / ratio
+            pcm = pcm[np.clip(indices.astype(int), 0, len(pcm) - 1)]
+
         # Split into VAD-sized frames
         offset = 0
         while offset + FRAME_SIZE <= len(pcm):
@@ -91,11 +98,22 @@ class AudioCapture:
 
     def run(self):
         """Blocking — runs until stop_event is set."""
-        # Large blocksize so we get smooth frames
-        blocksize = FRAME_SIZE * 4
+        # Query device native sample rate — WASAPI devices won't resample
+        try:
+            dev_info = sd.query_devices(self.device)
+            native_rate = int(dev_info['default_samplerate'])
+        except Exception:
+            native_rate = SAMPLE_RATE
+
+        self._native_rate = native_rate
+        self._needs_resample = (native_rate != SAMPLE_RATE)
+        if self._needs_resample and self.verbose:
+            print(f"  [capture] device runs at {native_rate}Hz, will resample to {SAMPLE_RATE}Hz")
+
+        blocksize = int(native_rate * FRAME_DURATION_MS / 1000) * 4
 
         try:
-            with sd.InputStream(samplerate=SAMPLE_RATE, channels=1,
+            with sd.InputStream(samplerate=native_rate, channels=1,
                                 dtype="float32", blocksize=blocksize,
                                 device=self.device,
                                 callback=self._audio_callback):

@@ -173,14 +173,22 @@ class LoopbackCapture:
         blocksize = int(source_rate * FRAME_DURATION_MS * 4 / 1000)
 
         try:
-            wasapi = sd.WasapiSettings(loopback=True)
+            # Try WASAPI loopback — not all sounddevice builds support it
+            extra = None
+            try:
+                extra = sd.WasapiSettings(loopback=True)
+            except (TypeError, AttributeError):
+                if self.verbose:
+                    print("  [loopback] WasapiSettings(loopback) not supported — "
+                          "falling back to raw input stream on output device")
+
             with sd.InputStream(
                 samplerate=source_rate,
                 channels=channels,
                 dtype="float32",
                 blocksize=blocksize,
                 device=dev_idx,
-                extra_settings=wasapi,
+                extra_settings=extra,
                 callback=self._audio_callback,
             ):
                 if self.verbose:
@@ -189,6 +197,8 @@ class LoopbackCapture:
                     self.stop_event.wait(timeout=0.1)
         except Exception as e:
             print(f"  [loopback] ERROR: {e}")
+            if self.verbose:
+                print("  [loopback] loopback disabled — only mic capture active")
 
         # Flush remaining chunk
         if self._chunk_frames and len(self._chunk_frames) >= _MIN_CHUNK_FRAMES:

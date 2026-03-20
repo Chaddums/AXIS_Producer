@@ -41,6 +41,14 @@ class VadDetector:
             return
 
         pcm = (indata[:, 0] * 32767).astype(np.int16)
+
+        # Resample to 16000Hz if device runs at different rate
+        if getattr(self, '_needs_resample', False):
+            ratio = SAMPLE_RATE / self._native_rate
+            new_len = int(len(pcm) * ratio)
+            indices = np.arange(new_len) / ratio
+            pcm = pcm[np.clip(indices.astype(int), 0, len(pcm) - 1)]
+
         offset = 0
         while offset + FRAME_SIZE <= len(pcm):
             frame_bytes = struct.pack(f"{FRAME_SIZE}h",
@@ -65,14 +73,24 @@ class VadDetector:
             self._voiced_count = 0
 
     def _run(self):
-        blocksize = FRAME_SIZE * 4
+        # Query device native sample rate
         try:
-            with sd.InputStream(samplerate=SAMPLE_RATE, channels=1,
+            dev_info = sd.query_devices(self.device)
+            native_rate = int(dev_info['default_samplerate'])
+        except Exception:
+            native_rate = SAMPLE_RATE
+
+        self._native_rate = native_rate
+        self._needs_resample = (native_rate != SAMPLE_RATE)
+
+        blocksize = int(native_rate * FRAME_DURATION_MS / 1000) * 4
+        try:
+            with sd.InputStream(samplerate=native_rate, channels=1,
                                 dtype="float32", blocksize=blocksize,
                                 device=self.device,
                                 callback=self._audio_callback):
                 if self.verbose:
-                    print("  [vad] detector started")
+                    print(f"  [vad] detector started ({native_rate}Hz)")
                 while not self._stop.is_set():
                     self._stop.wait(timeout=0.2)
         except Exception as e:
