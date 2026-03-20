@@ -93,7 +93,6 @@ class TrayApp:
             pystray.MenuItem(
                 "Force Batch Now",
                 self._on_force_batch,
-                visible=lambda item: self.controller.state == State.RECORDING,
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
@@ -811,63 +810,88 @@ class TrayApp:
     # ----- Items logged toast -----
 
     def _show_items_toast(self, items: list):
-        """Show a compact taskbar toast summarizing items from the latest batch.
-        Each item is a (category, text) tuple."""
+        """Show a notification window summarizing items from the latest batch.
+        Stays open until manually closed. Scrollable if many items."""
         if not items:
             return
 
         # Category → emoji mapping
         emoji = {
-            "Action Items": "📋",
-            "Blockers": "🚫",
-            "Open Questions": "❓",
-            "Decisions": "✅",
-            "Ideas": "💡",
-            "Watch List": "👁",
+            "Action Items": "\u25b6",
+            "Blockers": "\u26a0",
+            "Open Questions": "?",
+            "Decisions": "\u2713",
+            "Ideas": "*",
+            "Watch List": "\u25cb",
         }
 
-        # Build summary lines (max 5)
-        lines = []
-        for cat, text in items[:5]:
-            icon = emoji.get(cat, "•")
-            short = text[:60] + ("..." if len(text) > 60 else "")
-            lines.append(f"{icon} {cat}: {short}")
-        if len(items) > 5:
-            lines.append(f"  ...and {len(items) - 5} more")
-
         toast = tk.Toplevel(self._tk_root)
-        toast.title("AXIS Notes")
+        toast.title("AXIS — Session Notes")
         toast.attributes("-topmost", True)
-        toast.overrideredirect(True)
+        toast.resizable(True, True)
 
-        height = 40 + len(lines) * 22
+        # Position in lower-right
         screen_w = toast.winfo_screenwidth()
         screen_h = toast.winfo_screenheight()
-        toast.geometry(f"420x{height}+{screen_w - 440}+{screen_h - height - 60}")
+        w, h = 480, min(400, 80 + len(items) * 28)
+        toast.geometry(f"{w}x{h}+{screen_w - w - 20}+{screen_h - h - 80}")
 
-        frame = tk.Frame(toast, bg="#2a6090", padx=2, pady=2)
-        frame.pack(fill="both", expand=True)
-
-        inner = tk.Frame(frame, bg="#0e1225")
-        inner.pack(fill="both", expand=True)
+        # Title bar with close button
+        title_frame = tk.Frame(toast, bg="#1a2a44")
+        title_frame.pack(fill="x")
 
         tk.Label(
-            inner, text=f"AXIS — {len(items)} item{'s' if len(items) != 1 else ''} logged",
-            bg="#0e1225", fg="#4ac0ff",
-            font=("Consolas", 10, "bold"), anchor="w",
-        ).pack(fill="x", padx=8, pady=(6, 2))
+            title_frame, text=f"AXIS — {len(items)} item{'s' if len(items) != 1 else ''} logged",
+            bg="#1a2a44", fg="#4ac0ff",
+            font=("Consolas", 11, "bold"), anchor="w",
+        ).pack(side="left", padx=10, pady=6)
 
-        for line in lines:
+        close_btn = tk.Button(
+            title_frame, text="X", command=toast.destroy,
+            bg="#1a2a44", fg="#ff4444", relief="flat",
+            font=("Consolas", 10, "bold"), width=3,
+        )
+        close_btn.pack(side="right", padx=4, pady=4)
+
+        # Scrollable content
+        canvas = tk.Canvas(toast, bg="#0e1225", highlightthickness=0)
+        scrollbar = tk.Scrollbar(toast, orient="vertical", command=canvas.yview)
+        content = tk.Frame(canvas, bg="#0e1225")
+
+        content.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=content, anchor="nw", width=w - 20)
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        # Mouse wheel scrolling
+        def on_mousewheel(event):
+            canvas.yview_scroll(-1 * (event.delta // 120), "units")
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
+        toast.protocol("WM_DELETE_WINDOW", lambda: (canvas.unbind_all("<MouseWheel>"), toast.destroy()))
+
+        # Render items grouped by category
+        current_cat = None
+        for cat, text in items:
+            if cat != current_cat:
+                current_cat = cat
+                icon = emoji.get(cat, "-")
+                tk.Label(
+                    content, text=f"{icon} {cat}",
+                    bg="#0e1225", fg="#4ac0ff",
+                    font=("Consolas", 10, "bold"), anchor="w",
+                ).pack(fill="x", padx=8, pady=(8, 2))
+
             tk.Label(
-                inner, text=line,
+                content, text=f"  {text}",
                 bg="#0e1225", fg="#cccccc",
-                font=("Consolas", 9), anchor="w", wraplength=400,
+                font=("Consolas", 9), anchor="w", wraplength=440,
+                justify="left",
             ).pack(fill="x", padx=8, pady=1)
 
-        for widget in [toast, frame, inner]:
-            widget.bind("<Button-1>", lambda e: toast.destroy())
-
-        toast.after(8000, lambda: toast.destroy() if toast.winfo_exists() else None)
+        # Auto-close after 30 seconds (long enough to read)
+        toast.after(30000, lambda: toast.destroy() if toast.winfo_exists() else None)
 
     def _show_blockers_panel(self):
         """Show all tracked blockers in a panel."""
