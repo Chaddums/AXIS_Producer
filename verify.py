@@ -615,7 +615,7 @@ def main():
     args = parser.parse_args()
 
     print("=" * 60)
-    print("  AXIS Producer — Pre-flight Verification")
+    print("  AXIS Producer -- Pre-flight Verification")
     print("=" * 60)
 
     check_imports()

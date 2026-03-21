@@ -97,7 +97,7 @@ class BatchProducer:
         word_count = len(transcript.split())
         if word_count < MIN_WORDS_TO_BATCH:
             if self.verbose:
-                print(f"  [producer] only {word_count} words, below threshold — keeping in buffer")
+                print(f"  [producer] only {word_count} words, below threshold -- keeping in buffer")
             # Put it back
             with self.buffer_lock:
                 self.transcript_buffer.insert(0, transcript)
@@ -107,7 +107,7 @@ class BatchProducer:
         timestamp = datetime.now().strftime("%H:%M")
 
         if self.verbose:
-            print(f"  [producer] batch {self._batch_count} — {word_count} words → Claude")
+            print(f"  [producer] batch {self._batch_count} -- {word_count} words -> Claude")
 
         try:
             response = self._client.messages.create(

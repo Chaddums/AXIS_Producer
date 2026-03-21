@@ -550,7 +550,7 @@ class BriefingScheduler:
             return
         self._mark_fired(briefing.type)
         if self.verbose:
-            print(f"  [briefing] firing: {briefing.type} — {briefing.title}")
+            print(f"  [briefing] firing: {briefing.type} -- {briefing.title}")
         if self.on_briefing:
             self.on_briefing(briefing)
 
@@ -633,7 +633,7 @@ class BriefingScheduler:
     def run(self):
         """Blocking — runs until stop_event is set."""
         if self.verbose:
-            print(f"  [briefing] scheduler started — "
+            print(f"  [briefing] scheduler started -- "
                   f"standup={self.standup_hour}:00, "
                   f"checkin={self.checkin_hour}:00, "
                   f"wrapup={self.wrapup_hour}:00")

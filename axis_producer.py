@@ -93,7 +93,7 @@ def main():
     dev_name = sd.query_devices(dev_idx)["name"]
 
     print()
-    print("AXIS Producer — listening")
+    print("AXIS Producer -- listening")
     print(f"Whisper: {args.model} | VAD: level 2 | Batch: every {args.interval // 60} min")
     print(f"Log: {os.path.abspath(args.log)}")
     print(f"Mic: {dev_name} (device {dev_idx})")
@@ -111,7 +111,7 @@ def main():
 
     # Handle Ctrl+C
     def shutdown(sig, frame):
-        print("\n  Shutting down — flushing final batch...")
+        print("\n  Shutting down -- flushing final batch...")
         stop_event.set()
 
     signal.signal(signal.SIGINT, shutdown)
@@ -134,7 +134,7 @@ def main():
             else:
                 stop_event.wait(timeout=0.5)
     except KeyboardInterrupt:
-        print("\n  Shutting down — flushing final batch...")
+        print("\n  Shutting down -- flushing final batch...")
         stop_event.set()
 
     # Wait for threads to finish (with timeout)

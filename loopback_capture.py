@@ -154,7 +154,7 @@ class LoopbackCapture:
         """Blocking — runs until stop_event is set."""
         dev_idx = find_wasapi_loopback_device(self.device)
         if dev_idx is None:
-            print("  [loopback] no WASAPI output device found — loopback disabled")
+            print("  [loopback] no WASAPI output device found -- loopback disabled")
             return
 
         dev_info = sd.query_devices(dev_idx)
@@ -179,7 +179,7 @@ class LoopbackCapture:
                 extra = sd.WasapiSettings(loopback=True)
             except (TypeError, AttributeError):
                 if self.verbose:
-                    print("  [loopback] WasapiSettings(loopback) not supported — "
+                    print("  [loopback] WasapiSettings(loopback) not supported -- "
                           "falling back to raw input stream on output device")
 
             with sd.InputStream(
@@ -198,7 +198,7 @@ class LoopbackCapture:
         except Exception as e:
             print(f"  [loopback] ERROR: {e}")
             if self.verbose:
-                print("  [loopback] loopback disabled — only mic capture active")
+                print("  [loopback] loopback disabled -- only mic capture active")
 
         # Flush remaining chunk
         if self._chunk_frames and len(self._chunk_frames) >= _MIN_CHUNK_FRAMES:

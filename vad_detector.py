@@ -13,9 +13,8 @@ import numpy as np
 import sounddevice as sd
 import webrtcvad
 
-SAMPLE_RATE = 16000
-FRAME_DURATION_MS = 30
-FRAME_SIZE = int(SAMPLE_RATE * FRAME_DURATION_MS / 1000)  # 480 samples
+from capture import SAMPLE_RATE, FRAME_DURATION_MS, FRAME_SIZE, CALIBRATION_SEC, NOISE_GATE_HEADROOM
+
 VOICED_FRAMES_THRESHOLD = 10   # 300ms of speech to trigger
 COOLDOWN_SEC = 30.0            # no re-trigger for 30s
 
@@ -30,6 +29,7 @@ class VadDetector:
         self.verbose = verbose
 
         self.vad = webrtcvad.Vad(sensitivity)
+        self._noise_gate_rms = 0
         self._voiced_count = 0
         self._last_trigger = 0.0
         self._stop = threading.Event()
@@ -57,7 +57,13 @@ class VadDetector:
             offset += FRAME_SIZE
 
     def _process_frame(self, frame_bytes: bytes):
-        is_speech = self.vad.is_speech(frame_bytes, SAMPLE_RATE)
+        # Noise gate: reject low-energy frames before trusting VAD
+        pcm_frame = np.frombuffer(frame_bytes, dtype=np.int16)
+        rms = np.sqrt(np.mean(pcm_frame.astype(np.float64) ** 2))
+        if rms < self._noise_gate_rms:
+            is_speech = False
+        else:
+            is_speech = self.vad.is_speech(frame_bytes, SAMPLE_RATE)
 
         if is_speech:
             self._voiced_count += 1
@@ -67,10 +73,39 @@ class VadDetector:
                     self._last_trigger = now
                     self._voiced_count = 0
                     if self.verbose:
-                        print("  [vad] speech detected — triggering callback")
+                        print("  [vad] speech detected -- triggering callback")
                     self.on_speech_detected()
         else:
             self._voiced_count = 0
+
+    def _calibrate_noise_floor(self, native_rate, blocksize):
+        """Record ambient noise to set the noise gate threshold."""
+        rms_samples = []
+
+        def cal_callback(indata, frames, time_info, status):
+            pcm = (indata[:, 0] * 32767).astype(np.int16)
+            if getattr(self, '_needs_resample', False):
+                ratio = SAMPLE_RATE / self._native_rate
+                new_len = int(len(pcm) * ratio)
+                indices = np.arange(new_len) / ratio
+                pcm = pcm[np.clip(indices.astype(int), 0, len(pcm) - 1)]
+            offset = 0
+            while offset + FRAME_SIZE <= len(pcm):
+                pf = pcm[offset:offset + FRAME_SIZE]
+                rms = np.sqrt(np.mean(pf.astype(np.float64) ** 2))
+                rms_samples.append(rms)
+                offset += FRAME_SIZE
+
+        with sd.InputStream(samplerate=native_rate, channels=1,
+                            dtype="float32", blocksize=blocksize,
+                            device=self.device, callback=cal_callback):
+            time.sleep(CALIBRATION_SEC)
+
+        if rms_samples:
+            p90 = float(np.percentile(rms_samples, 90))
+            self._noise_gate_rms = p90 * NOISE_GATE_HEADROOM
+        else:
+            self._noise_gate_rms = 600
 
     def _run(self):
         # Query device native sample rate
@@ -84,13 +119,17 @@ class VadDetector:
         self._needs_resample = (native_rate != SAMPLE_RATE)
 
         blocksize = int(native_rate * FRAME_DURATION_MS / 1000) * 4
+
+        # Calibrate noise gate
+        self._calibrate_noise_floor(native_rate, blocksize)
+
         try:
             with sd.InputStream(samplerate=native_rate, channels=1,
                                 dtype="float32", blocksize=blocksize,
                                 device=self.device,
                                 callback=self._audio_callback):
                 if self.verbose:
-                    print(f"  [vad] detector started ({native_rate}Hz)")
+                    print(f"  [vad] detector started ({native_rate}Hz, gate={self._noise_gate_rms:.0f})")
                 while not self._stop.is_set():
                     self._stop.wait(timeout=0.2)
         except Exception as e:

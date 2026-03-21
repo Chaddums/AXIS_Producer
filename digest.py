@@ -473,7 +473,7 @@ def run_digest(log_path: str, output_path: str, dry_run: bool = False,
 
     if verbose:
         s = triage_result["summary"]
-        print(f"  [triage] scored {s['total']} items — "
+        print(f"  [triage] scored {s['total']} items -- "
               f"avg {s['avg_score']:.0f}/100 — "
               f"grades: {s['by_grade']}")
 

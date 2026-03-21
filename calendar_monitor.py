@@ -237,7 +237,7 @@ class CalendarMonitor:
         """Blocking — runs until stop_event is set."""
         if not _outlook_available():
             if self.verbose:
-                print("  [calendar] win32com not installed — calendar monitor disabled")
+                print("  [calendar] win32com not installed -- calendar monitor disabled")
             return
 
         if not self._connect_outlook():
@@ -252,7 +252,7 @@ class CalendarMonitor:
         if self.verbose and self.upcoming_events:
             print(f"  [calendar] {len(self.upcoming_events)} upcoming events:")
             for ev in self.upcoming_events[:5]:
-                print(f"    {ev.start:%H:%M} — {ev.subject}")
+                print(f"    {ev.start:%H:%M} -- {ev.subject}")
 
         while not self.stop_event.is_set():
             self.stop_event.wait(timeout=self.poll_interval)

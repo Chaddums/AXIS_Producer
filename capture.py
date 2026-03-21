@@ -15,7 +15,11 @@ FRAME_DURATION_MS = 30
 FRAME_SIZE = int(SAMPLE_RATE * FRAME_DURATION_MS / 1000)  # 480 samples
 SILENCE_THRESHOLD_SEC = 2.0
 MIN_CHUNK_DURATION_SEC = 1.0
-VAD_AGGRESSIVENESS = 2
+VAD_AGGRESSIVENESS = 3
+
+# Adaptive noise gate calibration
+CALIBRATION_SEC = 3.0          # seconds of ambient noise to measure at startup
+NOISE_GATE_HEADROOM = 1.5     # gate = ambient_p90 * this multiplier
 
 # Number of consecutive silent frames before we seal a chunk
 _SILENCE_FRAMES = int(SILENCE_THRESHOLD_SEC * 1000 / FRAME_DURATION_MS)
@@ -34,6 +38,7 @@ class AudioCapture:
         self.verbose = verbose
 
         self.vad = webrtcvad.Vad(VAD_AGGRESSIVENESS)
+        self._noise_gate_rms = 0  # set during calibration
 
         self._ring = collections.deque()
         self._silent_count = 0
@@ -64,7 +69,13 @@ class AudioCapture:
             offset += FRAME_SIZE
 
     def _process_frame(self, frame_bytes: bytes):
-        is_speech = self.vad.is_speech(frame_bytes, SAMPLE_RATE)
+        # Noise gate: check RMS energy before trusting VAD
+        pcm_frame = np.frombuffer(frame_bytes, dtype=np.int16)
+        rms = np.sqrt(np.mean(pcm_frame.astype(np.float64) ** 2))
+        if rms < self._noise_gate_rms:
+            is_speech = False
+        else:
+            is_speech = self.vad.is_speech(frame_bytes, SAMPLE_RATE)
 
         if is_speech:
             self._silent_count = 0
@@ -96,6 +107,43 @@ class AudioCapture:
         raw = b"".join(frames)
         return np.frombuffer(raw, dtype=np.int16)
 
+    def _calibrate_noise_floor(self, native_rate: int, blocksize: int):
+        """Record a few seconds of ambient noise to set the noise gate."""
+        rms_samples = []
+
+        def cal_callback(indata, frames, time_info, status):
+            pcm = (indata[:, 0] * 32767).astype(np.int16)
+            if getattr(self, '_needs_resample', False):
+                ratio = SAMPLE_RATE / self._native_rate
+                new_len = int(len(pcm) * ratio)
+                indices = np.arange(new_len) / ratio
+                pcm = pcm[np.clip(indices.astype(int), 0, len(pcm) - 1)]
+            offset = 0
+            while offset + FRAME_SIZE <= len(pcm):
+                pf = pcm[offset:offset + FRAME_SIZE]
+                rms = np.sqrt(np.mean(pf.astype(np.float64) ** 2))
+                rms_samples.append(rms)
+                offset += FRAME_SIZE
+
+        if self.verbose:
+            print(f"  [capture] calibrating noise floor ({CALIBRATION_SEC:.0f}s)...")
+
+        with sd.InputStream(samplerate=native_rate, channels=1,
+                            dtype="float32", blocksize=blocksize,
+                            device=self.device, callback=cal_callback):
+            time.sleep(CALIBRATION_SEC)
+
+        if rms_samples:
+            p90 = float(np.percentile(rms_samples, 90))
+            self._noise_gate_rms = p90 * NOISE_GATE_HEADROOM
+            if self.verbose:
+                avg = float(np.mean(rms_samples))
+                print(f"  [capture] noise floor: avg={avg:.0f} p90={p90:.0f} -> gate={self._noise_gate_rms:.0f}")
+        else:
+            self._noise_gate_rms = 600  # safe fallback
+            if self.verbose:
+                print(f"  [capture] calibration got no samples, using fallback gate={self._noise_gate_rms}")
+
     def run(self):
         """Blocking — runs until stop_event is set."""
         # Query device native sample rate — WASAPI devices won't resample
@@ -112,13 +160,16 @@ class AudioCapture:
 
         blocksize = int(native_rate * FRAME_DURATION_MS / 1000) * 4
 
+        # Calibrate noise gate before opening the main stream
+        self._calibrate_noise_floor(native_rate, blocksize)
+
         try:
             with sd.InputStream(samplerate=native_rate, channels=1,
                                 dtype="float32", blocksize=blocksize,
                                 device=self.device,
                                 callback=self._audio_callback):
                 if self.verbose:
-                    print("  [capture] mic stream open")
+                    print("  [capture] mic stream open -- listening")
                 while not self.stop_event.is_set():
                     self.stop_event.wait(timeout=0.1)
         except Exception as e:

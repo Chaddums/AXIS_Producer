@@ -393,7 +393,7 @@ class SessionController:
             self._set_state(State.STOPPING)
 
         if self.settings.verbose:
-            print("  [controller] stopping — flushing final batch...")
+            print("  [controller] stopping -- flushing final batch...")
 
         # Signal all threads to stop
         if self._stop_event:

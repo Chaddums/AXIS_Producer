@@ -55,7 +55,7 @@ class EmailMonitor:
             # 6 = olFolderInbox
             self._inbox = namespace.GetDefaultFolder(6)
             if self.verbose:
-                print(f"  [email] connected to Outlook — "
+                print(f"  [email] connected to Outlook -- "
                       f"{self._inbox.Items.Count} inbox items")
             return True
         except Exception as e:
@@ -150,7 +150,7 @@ class EmailMonitor:
         """Blocking — runs until stop_event is set."""
         if not _outlook_available():
             if self.verbose:
-                print("  [email] win32com not installed — email monitor disabled")
+                print("  [email] win32com not installed -- email monitor disabled")
                 print("  [email] install with: pip install pywin32")
             return
 

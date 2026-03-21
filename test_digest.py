@@ -142,7 +142,7 @@ def test_parse_session_log():
     assert len(batches[1]["items"]) == 4, f"Batch 2: expected 4 items, got {len(batches[1]['items'])}"
     assert len(batches[2]["items"]) == 2
 
-    print(f"  PASS — 3 batches, {sum(len(b['items']) for b in batches)} total items")
+    print(f"  PASS -- 3 batches, {sum(len(b['items']) for b in batches)} total items")
     print()
 
 
@@ -153,7 +153,7 @@ def test_parse_empty_log():
     batches = parse_session_log(EMPTY_LOG)
     assert len(batches) == 0, f"Expected 0 batches, got {len(batches)}"
 
-    print("  PASS — 0 batches from empty log")
+    print("  PASS -- 0 batches from empty log")
     print()
 
 
@@ -164,7 +164,7 @@ def test_parse_nothing_to_report():
     batches = parse_session_log(NOTHING_LOG)
     assert len(batches) == 0 or all(len(b["items"]) == 0 for b in batches)
 
-    print("  PASS — no items extracted from [nothing to report]")
+    print("  PASS -- no items extracted from [nothing to report]")
     print()
 
 
@@ -175,7 +175,7 @@ def test_extract_session_header():
     start = extract_session_header(SAMPLE_LOG)
     assert start == "2026-03-16 14:00", f"Expected '2026-03-16 14:00', got '{start}'"
 
-    print(f"  PASS — extracted: {start}")
+    print(f"  PASS -- extracted: {start}")
     print()
 
 
@@ -193,7 +193,7 @@ def test_format_items_for_claude():
     assert lines[0].startswith("[DECISION]")
     assert "(14:30)" in lines[0]
 
-    print(f"  PASS — {len(lines)} formatted lines")
+    print(f"  PASS -- {len(lines)} formatted lines")
     print(f"  Sample: {lines[0]}")
     print()
 
@@ -209,7 +209,7 @@ def test_format_session_block():
     assert "### Game Systems" in block
     assert "---" in block
 
-    print("  PASS — session block formatted correctly")
+    print("  PASS -- session block formatted correctly")
     print()
 
 
@@ -231,7 +231,7 @@ def test_write_digest_new():
         assert "# Session Digest" in content, "Missing title"
         assert "## Session: 2026-03-16 14:00" in content, "Missing session block"
 
-        print("  PASS — new digest created with frontmatter + session block")
+        print("  PASS -- new digest created with frontmatter + session block")
     finally:
         if os.path.exists(path):
             os.unlink(path)
@@ -257,7 +257,7 @@ def test_write_digest_append():
         content = read_existing_digest(path)
         assert content.count("## Session:") == 2, "Expected 2 session blocks"
 
-        print("  PASS — 2 session blocks in accumulated digest")
+        print("  PASS -- 2 session blocks in accumulated digest")
     finally:
         if os.path.exists(path):
             os.unlink(path)
@@ -277,7 +277,7 @@ def test_tag_preservation():
     expected = {"DECISION", "IDEA", "QUESTION", "ACTION", "WATCH"}
     assert all_tags == expected, f"Expected {expected}, got {all_tags}"
 
-    print(f"  PASS — all 5 tags found: {sorted(all_tags)}")
+    print(f"  PASS -- all 5 tags found: {sorted(all_tags)}")
     print()
 
 
@@ -310,7 +310,7 @@ def test_parse_themed_output():
     for item in items:
         assert "ALPHA_ROADMAP" not in item["text"], "Suggested Updates leaked into items"
 
-    print(f"  PASS — {len(items)} items across {len(themes)} themes")
+    print(f"  PASS -- {len(items)} items across {len(themes)} themes")
     print()
 
 
@@ -368,7 +368,7 @@ def test_db_insert_and_search():
         assert stats["by_tag"]["IDEA"] == 2
         assert "Game Systems" in stats["by_theme"]
 
-        print(f"  PASS — 5 items indexed, search/filter/stats all work")
+        print(f"  PASS -- 5 items indexed, search/filter/stats all work")
     finally:
         if db:
             db.close()
@@ -400,7 +400,7 @@ def test_db_index_from_themed():
         results = db.search("topology")
         assert len(results) >= 1
 
-        print(f"  PASS — 11 items indexed from themed output")
+        print(f"  PASS -- 11 items indexed from themed output")
     finally:
         if db:
             db.close()
@@ -427,7 +427,7 @@ def test_db_index_fallback_raw():
         assert stats["total"] == 11, f"Expected 11 raw items, got {stats['total']}"
         assert "" in stats["by_theme"] or stats["total"] > 0
 
-        print(f"  PASS — {stats['total']} raw items indexed as fallback")
+        print(f"  PASS -- {stats['total']} raw items indexed as fallback")
     finally:
         if db:
             db.close()
@@ -463,7 +463,7 @@ def test_triage_scoring():
     assert vague_result["score"] < result["score"], \
         f"Vague ({vague_result['score']}) should score lower than specific ({result['score']})"
 
-    print(f"  PASS — good action: {result['score']}/100 ({result['grade']}), "
+    print(f"  PASS -- good action: {result['score']}/100 ({result['grade']}), "
           f"vague idea: {vague_result['score']}/100 ({vague_result['grade']})")
     print()
 
@@ -480,7 +480,7 @@ def test_triage_routing():
     assert route_to_theme("AXIS personality and dialogue flavor text") == "AXIS / Lore"
     assert route_to_theme("Refactor the service locator pattern") == "Architecture / Code"
 
-    print("  PASS — all items routed to expected themes")
+    print("  PASS -- all items routed to expected themes")
     print()
 
 
@@ -509,7 +509,7 @@ def test_triage_session():
         assert r["theme"], f"Missing theme for: {r['text']}"
 
     grades = result["summary"]["by_grade"]
-    print(f"  PASS — 11 items triaged, avg score {result['summary']['avg_score']:.0f}/100")
+    print(f"  PASS -- 11 items triaged, avg score {result['summary']['avg_score']:.0f}/100")
     print(f"         grades: {grades}")
     print()
 
@@ -537,7 +537,7 @@ def test_triage_training():
         loaded = load_training(train_path)
         assert "flux_capacitor" in loaded["Game Systems"]
 
-        print("  PASS — custom keywords added and persisted")
+        print("  PASS -- custom keywords added and persisted")
     finally:
         if os.path.exists(train_path):
             os.unlink(train_path)
@@ -571,7 +571,7 @@ def test_triage_analytics():
         assert summary["by_grade"]["actionable"] == 5
         assert 67.5 in summary["avg_score_trend"]
 
-        print(f"  PASS — analytics recorded: {summary['total_processed']} items, "
+        print(f"  PASS -- analytics recorded: {summary['total_processed']} items, "
               f"{summary['session_count']} session(s)")
     finally:
         if os.path.exists(analytics_path):
@@ -582,7 +582,7 @@ def test_triage_analytics():
 def main():
     print()
     print("=" * 50)
-    print("Session Digest — Smoke Tests")
+    print("Session Digest -- Smoke Tests")
     print("=" * 50)
     print()
 

@@ -613,7 +613,7 @@ def main():
         return
 
     print("=" * 60)
-    print("  AXIS Producer — Interactive Feature Test")
+    print("  AXIS Producer -- Interactive Feature Test")
     print("  10 tests, ~15 minutes total")
     print("=" * 60)
 

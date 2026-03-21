@@ -47,9 +47,9 @@ def test_vad_chunking():
     if not chunk_queue.empty():
         audio = chunk_queue.get()
         dur = len(audio) / SAMPLE_RATE
-        print(f"  PASS — chunk captured: {dur:.1f}s of audio")
+        print(f"  PASS -- chunk captured: {dur:.1f}s of audio")
     else:
-        print("  PASS (note: VAD may not trigger on pure sine — this is OK)")
+        print("  PASS (note: VAD may not trigger on pure sine -- this is OK)")
     print()
 
 
@@ -60,15 +60,15 @@ def test_transcriber_integration():
     try:
         from faster_whisper import WhisperModel
         model = WhisperModel("base.en", device="cpu", compute_type="int8")
-        print("  PASS — base.en model loaded")
+        print("  PASS -- base.en model loaded")
 
         # Transcribe 2s of silence (should return empty or near-empty)
         silence = np.zeros(32000, dtype=np.float32)
         segments, _ = model.transcribe(silence, beam_size=1, language="en")
         text = " ".join(s.text for s in segments).strip()
-        print(f"  PASS — transcription returned: '{text}' (expected empty or near-empty)")
+        print(f"  PASS -- transcription returned: '{text}' (expected empty or near-empty)")
     except Exception as e:
-        print(f"  FAIL — {e}")
+        print(f"  FAIL -- {e}")
     print()
 
 
@@ -96,7 +96,7 @@ def test_producer_logging():
 
         assert "# AXIS Session Log" in content, "Missing header"
         assert "Started:" in content, "Missing start time"
-        print("  PASS — log header written correctly")
+        print("  PASS -- log header written correctly")
         print(f"  Content preview: {content[:80]}...")
     finally:
         os.unlink(log_path)
@@ -109,7 +109,7 @@ def test_claude_api():
 
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        print("  SKIP — ANTHROPIC_API_KEY not set")
+        print("  SKIP -- ANTHROPIC_API_KEY not set")
         print()
         return
 
@@ -122,9 +122,9 @@ def test_claude_api():
             messages=[{"role": "user", "content": "Say 'AXIS Producer online' and nothing else."}],
         )
         text = response.content[0].text
-        print(f"  PASS — Claude responded: {text}")
+        print(f"  PASS -- Claude responded: {text}")
     except Exception as e:
-        print(f"  FAIL — {e}")
+        print(f"  FAIL -- {e}")
     print()
 
 
@@ -138,17 +138,17 @@ def test_audio_devices():
         input_devices = [d for d in devices if d["max_input_channels"] > 0]
         default_idx = sd.default.device[0]
         default_name = sd.query_devices(default_idx)["name"]
-        print(f"  PASS — {len(input_devices)} input device(s) found")
+        print(f"  PASS -- {len(input_devices)} input device(s) found")
         print(f"  Default: [{default_idx}] {default_name}")
     except Exception as e:
-        print(f"  FAIL — {e}")
+        print(f"  FAIL -- {e}")
     print()
 
 
 def main():
     print()
     print("=" * 50)
-    print("AXIS Producer — Smoke Tests")
+    print("AXIS Producer -- Smoke Tests")
     print("=" * 50)
     print()
 

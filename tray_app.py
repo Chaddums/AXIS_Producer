@@ -1016,7 +1016,7 @@ class TrayApp:
         """Start the tray app (blocks on main thread)."""
         # Verify API key
         if not os.environ.get("ANTHROPIC_API_KEY"):
-            print("WARNING: ANTHROPIC_API_KEY not set — recording will fail")
+            print("WARNING: ANTHROPIC_API_KEY not set -- recording will fail")
 
         # Start tkinter thread
         self._tk_thread.start()

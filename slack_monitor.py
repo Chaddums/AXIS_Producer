@@ -155,7 +155,7 @@ class SlackMonitor:
         """Blocking — runs until stop_event is set."""
         if not self.token:
             if self.verbose:
-                print("  [slack] no token — monitor disabled "
+                print("  [slack] no token -- monitor disabled "
                       "(set SLACK_BOT_TOKEN or configure in settings)")
             return
 
@@ -164,7 +164,7 @@ class SlackMonitor:
 
         if not self.channel_ids:
             if self.verbose:
-                print("  [slack] no channels to watch — monitor disabled")
+                print("  [slack] no channels to watch -- monitor disabled")
             return
 
         if self.verbose:
