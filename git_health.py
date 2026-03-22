@@ -191,24 +191,40 @@ class GitHealthMonitor:
             # Unpushed commits
             if b.unpushed > 0 and b.is_current:
                 if now - self._last_push_remind > self.push_remind_minutes * 60:
+                    # Get commit summaries
+                    remote_ref = self._git("rev-parse", "--abbrev-ref",
+                                           f"{b.name}@{{upstream}}")
+                    commit_log = ""
+                    if remote_ref:
+                        commit_log = self._git(
+                            "log", "--oneline", f"{remote_ref}..{b.name}",
+                            f"--max-count=5")
                     alerts.append(GitHealthAlert(
                         alert_type="unpushed",
                         severity="warning",
                         branch=b.name,
                         message=f"{b.unpushed} unpushed commit{'s' if b.unpushed != 1 else ''} on {b.name}",
-                        details={"count": b.unpushed},
+                        details={"count": b.unpushed, "commits": commit_log},
                     ))
                     self._last_push_remind = now
 
             # Unpulled commits
             if b.unpulled > 0 and b.is_current:
                 if now - self._last_pull_remind > self.pull_remind_minutes * 60:
+                    # Get what's waiting on remote
+                    remote_ref = self._git("rev-parse", "--abbrev-ref",
+                                           f"{b.name}@{{upstream}}")
+                    commit_log = ""
+                    if remote_ref:
+                        commit_log = self._git(
+                            "log", "--oneline", f"{b.name}..{remote_ref}",
+                            f"--max-count=5")
                     alerts.append(GitHealthAlert(
                         alert_type="unpulled",
                         severity="warning",
                         branch=b.name,
-                        message=f"{b.unpulled} unpulled commit{'s' if b.unpulled != 1 else ''} on {b.name} — consider pulling",
-                        details={"count": b.unpulled},
+                        message=f"{b.unpulled} unpulled commit{'s' if b.unpulled != 1 else ''} on {b.name}:\n{commit_log}" if commit_log else f"{b.unpulled} unpulled commit{'s' if b.unpulled != 1 else ''} on {b.name} — consider pulling",
+                        details={"count": b.unpulled, "commits": commit_log},
                     ))
                     self._last_pull_remind = now
 

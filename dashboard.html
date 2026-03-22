@@ -401,7 +401,14 @@
 
 <!-- Message bar -->
 <div class="message-bar">
-  <input id="msg-input" class="msg-input" type="text" placeholder="Type a message..." autocomplete="off">
+  <select id="priority-select" style="background:#1e293b;color:#c8d0e0;border:1px solid #334155;border-radius:6px;padding:6px 8px;font-family:Consolas,monospace;font-size:12px;">
+    <option value="info" style="color:#4ac0ff;">info</option>
+    <option value="warning" style="color:#ff8800;">&#x26a0; warning</option>
+    <option value="critical" style="color:#ff0000;">&#x1f534; critical</option>
+    <option value="success" style="color:#34d399;">&#x2713; success</option>
+    <option value="ambient" style="color:#64748b;">ambient</option>
+  </select>
+  <input id="msg-input" class="msg-input" type="text" placeholder="Type a message... (prefix with !! for critical, ! for warning)" autocomplete="off">
   <button id="mic-btn" class="mic-btn" title="Hold to record voice">&#x1F3A4;</button>
   <button id="send-btn" class="msg-btn">Send</button>
 </div>
@@ -524,13 +531,21 @@ async function apiChat(payload) {
 function classifyPriority(e) {
   const st = e.stream || '';
   const et = e.event_type || '';
+  const raw = e.raw || {};
+
+  // Explicit priority set by sender (chat messages with priority dropdown)
+  if (raw.priority && ['critical','warning','info','success','ambient'].includes(raw.priority)) {
+    return raw.priority;
+  }
+
   // critical
   if (['merge_conflict', 'file_conflict'].includes(et)) return 'critical';
   if (et === 'blocker' && (e.summary || '').toLowerCase().includes('critical')) return 'critical';
   // warning
-  if (et === 'unpushed' && (e.raw || {}).count > 5) return 'warning';
-  if (et === 'divergence' && (e.raw || {}).count > 10) return 'warning';
+  if (et === 'unpushed' && raw.count > 5) return 'warning';
+  if (et === 'divergence' && raw.count > 10) return 'warning';
   if (et === 'blocker' || et === 'blockers') return 'warning';
+  if (et === 'unpushed' || et === 'unpulled') return 'info';
   // success
   if (et === 'resolved' || et === 'merge_complete') return 'success';
   // info
@@ -895,7 +910,7 @@ async function sendThreadReply(parentId) {
 // ============================================================
 // Send message
 // ============================================================
-async function sendMessage(text, stream, eventType, parentId) {
+async function sendMessage(text, stream, eventType, parentId, priority) {
   if (!text) return;
   const payload = {
     who: getUser(),
@@ -903,7 +918,8 @@ async function sendMessage(text, stream, eventType, parentId) {
     stream: stream || 'chat',
     event_type: eventType || 'chat',
     parent_id: parentId || null,
-    ts: new Date().toISOString()
+    ts: new Date().toISOString(),
+    raw: priority && priority !== 'info' ? { priority: priority } : {},
   };
 
   try {
@@ -917,6 +933,7 @@ async function sendMessage(text, stream, eventType, parentId) {
         event_type: payload.event_type,
         summary: text,
         parent_id: payload.parent_id,
+        raw: payload.raw,
         ts: payload.ts
       });
     } catch (err) {
@@ -931,8 +948,24 @@ const msgInput = document.getElementById('msg-input');
 const sendBtn = document.getElementById('send-btn');
 
 sendBtn.addEventListener('click', () => {
-  const text = msgInput.value.trim();
-  if (text) { sendMessage(text, 'chat', 'chat'); msgInput.value = ''; }
+  let text = msgInput.value.trim();
+  if (!text) return;
+
+  // Priority from prefix or dropdown
+  const prioritySelect = document.getElementById('priority-select');
+  let priority = prioritySelect.value;
+
+  if (text.startsWith('!!')) {
+    priority = 'critical';
+    text = text.slice(2).trim();
+  } else if (text.startsWith('!')) {
+    priority = 'warning';
+    text = text.slice(1).trim();
+  }
+
+  sendMessage(text, 'chat', 'chat', null, priority);
+  msgInput.value = '';
+  prioritySelect.value = 'info';  // reset
 });
 msgInput.addEventListener('keydown', ev => {
   if (ev.key === 'Enter' && !ev.shiftKey) {
