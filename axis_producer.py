@@ -19,6 +19,7 @@ import queue
 import signal
 import sys
 import threading
+import time
 
 from capture import AudioCapture
 from transcriber import Transcriber
@@ -115,6 +116,19 @@ def main():
         stop_event.set()
 
     signal.signal(signal.SIGINT, shutdown)
+
+    # Startup check — wait for pipeline, then record a short clip
+    print("  Warming up (loading model + calibrating mic)...")
+    capture.ready.wait(timeout=30)
+    transcriber.ready.wait(timeout=30)
+    print("  Startup check -- speak now (8 seconds)...")
+    sys.stdout.flush()
+    time.sleep(8)
+    if producer.startup_check():
+        print("  Pipeline verified!\n")
+    else:
+        print("  No speech detected -- pipeline is ready, waiting for voice.\n")
+    sys.stdout.flush()
 
     # Main loop — listen for keyboard input
     try:

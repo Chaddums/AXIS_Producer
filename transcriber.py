@@ -26,6 +26,7 @@ class Transcriber:
         self.transcript_buffer = transcript_buffer
         self.model_name = model_name
         self.verbose = verbose
+        self.ready = threading.Event()  # set once whisper model is loaded
         self._model = None
 
     def _load_model(self):
@@ -40,6 +41,7 @@ class Transcriber:
     def run(self):
         """Blocking — runs until stop_event is set and queue is drained."""
         self._load_model()
+        self.ready.set()
 
         while not self.stop_event.is_set():
             try:

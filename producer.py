@@ -13,8 +13,10 @@ MODEL = "claude-sonnet-4-20250514"
 MAX_TOKENS = 1024
 
 SYSTEM_PROMPT = """\
-You are a producer observing a creative game development session between two developers.
+You are a producer observing a working session between collaborators.
 Your job is to extract signal from their conversation and produce structured notes.
+The conversation may cover any topic — development, design, strategy, philosophy, \
+business, technology, or anything else. Capture ALL substantive discussion.
 
 For each batch of transcript you receive, output ONLY the following sections \
 (omit any section that has nothing to report):
@@ -23,7 +25,7 @@ For each batch of transcript you receive, output ONLY the following sections \
 - [specific decisions made, stated as facts]
 
 ## Ideas Generated
-- [new concepts, mechanics, or approaches discussed]
+- [new concepts, insights, arguments, or approaches discussed]
 
 ## Open Questions
 - [unresolved questions raised, phrased as questions]
@@ -38,6 +40,9 @@ For each batch of transcript you receive, output ONLY the following sections \
 - [anything someone said they're blocked on, waiting for, or can't proceed without]
 - [format: WHO is blocked on WHAT — e.g. "Stu blocked on art assets from Adam"]
 
+## Key Discussion
+- [important points, arguments, or observations that don't fit the above categories]
+
 Rules:
 - Be terse. One line per item.
 - No editorializing. Capture what was said, not your opinion of it.
@@ -45,8 +50,8 @@ Rules:
 - If something was discussed but not resolved — that's an open question.
 - If someone says "blocked", "waiting on", "can't do X until Y", "stuck on" — that's a blocker.
 - Blockers are NOT the same as action items. A blocker means someone CANNOT proceed.
-- Ignore small talk, tangents, and repetition.
-- If the transcript is too unclear to extract anything useful, output: [nothing to report]"""
+- Ignore only filler and repetition, NOT topic changes. If they're talking about it, log it.
+- If the transcript is genuinely unintelligible, output: [nothing to report]"""
 
 
 class BatchProducer:
@@ -86,6 +91,51 @@ class BatchProducer:
 
         # Final flush on shutdown
         self._process_batch()
+
+    def startup_check(self):
+        """Run a mini batch with no word minimum to verify the pipeline works."""
+        with self.buffer_lock:
+            if not self.transcript_buffer:
+                return False
+            transcript = "\n".join(self.transcript_buffer)
+            self.transcript_buffer.clear()
+
+        word_count = len(transcript.split())
+        if word_count == 0:
+            return False
+
+        self._batch_count += 1
+        timestamp = datetime.now().strftime("%H:%M")
+
+        if self.verbose:
+            print(f"  [startup] {word_count} words captured -> Claude")
+
+        try:
+            response = self._client.messages.create(
+                model=MODEL,
+                max_tokens=MAX_TOKENS,
+                system=SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": transcript}],
+            )
+            notes = response.content[0].text
+        except Exception as e:
+            print(f"  [startup] Claude API error: {e}")
+            with self.buffer_lock:
+                self.transcript_buffer.insert(0, transcript)
+            return False
+
+        self._append_to_log(timestamp, notes)
+        print(f"  [startup] pipeline OK -- batch logged to session log")
+
+        if self.on_items_logged:
+            items = self._extract_items(notes)
+            if items:
+                try:
+                    self.on_items_logged(items)
+                except Exception:
+                    pass
+
+        return True
 
     def _process_batch(self):
         with self.buffer_lock:

@@ -38,6 +38,7 @@ class AudioCapture:
         self.verbose = verbose
 
         self.vad = webrtcvad.Vad(VAD_AGGRESSIVENESS)
+        self.ready = threading.Event()  # set once mic stream is open and listening
         self._noise_gate_rms = 0  # set during calibration
 
         self._ring = collections.deque()
@@ -170,6 +171,7 @@ class AudioCapture:
                                 callback=self._audio_callback):
                 if self.verbose:
                     print("  [capture] mic stream open -- listening")
+                self.ready.set()
                 while not self.stop_event.is_set():
                     self.stop_event.wait(timeout=0.1)
         except Exception as e:
