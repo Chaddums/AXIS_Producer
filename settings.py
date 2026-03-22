@@ -36,11 +36,24 @@ class Settings:
     checkin_hour: int = 13                # midday check-in hour
     wrapup_hour: int = 17                 # end-of-day wrap-up hour
     nag_interval_hours: int = 4           # hours between stale action nags
+    cloud_sync: bool = False              # push events to shared Supabase DB
+    supabase_url: str = ""                # Supabase project URL
+    supabase_key: str = ""                # Supabase anon/service key
+    user_identity: str = "stu"            # who am I (shown in shared DB)
+    synthesis_interval: int = 900         # seconds between cross-stream synthesis
+    claude_monitor: bool = True           # watch Claude Code conversation files
+    claude_project_paths: list[str] = None  # None = auto-discover all projects
+    claude_poll_interval: float = 3.0     # seconds between JSONL polls
+    notification_level: str = "info"      # minimum priority to show: ambient, info, warning, critical
+    aggressive_alerts: bool = False       # beep on warning, system alert on critical
+    dashboard_port: int = 8080            # localhost port for dashboard
     verbose: bool = False
 
     def __post_init__(self):
         if self.slack_channel_ids is None:
             self.slack_channel_ids = []
+        if self.claude_project_paths is None:
+            self.claude_project_paths = []
 
     @property
     def log_path(self) -> str:

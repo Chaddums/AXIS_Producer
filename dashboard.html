@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AXIS Producer — Collaboration Hub</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0e1a;
+    color: #c8d0e0;
+    font-family: 'Consolas', 'Fira Code', monospace;
+    font-size: 14px;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* Header */
+  .header {
+    background: #111827;
+    border-bottom: 1px solid #1e293b;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+    z-index: 100;
+  }
+  .header h1 { font-size: 16px; color: #4ac0ff; font-weight: 600; white-space: nowrap; }
+  .header .status { font-size: 11px; color: #64748b; white-space: nowrap; }
+  .header .status.connected { color: #34d399; }
+  .header .status.error { color: #f87171; }
+  .header .spacer { flex: 1; }
+  .header-btn {
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #c8d0e0;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .header-btn:hover { background: #334155; }
+  .header-btn.active { background: #1e3a5f; border-color: #4ac0ff; color: #4ac0ff; }
+  .header-input {
+    background: #0a0e1a;
+    border: 1px solid #334155;
+    color: #c8d0e0;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 12px;
+    width: 100px;
+  }
+  .header-input:focus { outline: none; border-color: #4ac0ff; }
+  .header-label { font-size: 11px; color: #64748b; }
+
+  /* Main scroll area */
+  .main-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* Grid rows */
+  .row-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  /* Panels */
+  .panel {
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .panel-header {
+    background: #1a2744;
+    padding: 8px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #4ac0ff;
+    border-bottom: 1px solid #1e293b;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .badge {
+    background: #1e3a5f;
+    color: #4ac0ff;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 10px;
+  }
+  .panel-body {
+    overflow-y: auto;
+    padding: 6px;
+    max-height: 260px;
+  }
+  .panel-body.feed-body {
+    max-height: 400px;
+    flex: 1;
+  }
+
+  /* Person cards */
+  .person-card {
+    background: #0f1729;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 4px;
+  }
+  .person-card h3 { font-size: 13px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+  .person-card h3 .presence-dot {
+    width: 7px; height: 7px; border-radius: 50%; display: inline-block;
+  }
+  .person-card h3 .presence-dot.online { background: #34d399; box-shadow: 0 0 4px #34d399; }
+  .person-card h3 .presence-dot.offline { background: #475569; }
+  .color-stu { color: #34d399; }
+  .color-adam { color: #f59e0b; }
+  .color-other { color: #a78bfa; }
+  .person-card .stat { font-size: 11px; color: #94a3b8; margin: 2px 0; }
+  .person-card .files { font-size: 10px; color: #818cf8; margin-top: 4px; }
+
+  /* Conflict items */
+  .conflict {
+    background: #3f1e1e;
+    border: 1px solid #7f1d1d;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin: 4px;
+  }
+  .conflict.pulse { animation: conflictPulse 1.5s ease-in-out infinite; }
+  @keyframes conflictPulse {
+    0%, 100% { border-color: #7f1d1d; }
+    50% { border-color: #ff0000; box-shadow: 0 0 8px rgba(255,0,0,0.3); }
+  }
+  .conflict-title { color: #f87171; font-weight: 600; font-size: 12px; }
+  .conflict-detail { color: #fca5a5; font-size: 11px; margin-top: 3px; }
+
+  /* Branch cards */
+  .branches-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+  }
+  .branch-card {
+    background: #0f1729;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 4px;
+    flex: 1;
+    min-width: 260px;
+    max-width: 400px;
+  }
+  .branch-name { font-weight: 600; font-size: 13px; color: #60a5fa; }
+  .branch-name.current { color: #34d399; }
+  .branch-name.current::before { content: "\25cf "; }
+  .branch-stats { font-size: 11px; color: #94a3b8; margin-top: 3px; }
+  .branch-stats .warn { color: #fb923c; }
+  .branch-msg { font-size: 12px; color: #c8d0e0; margin-top: 3px; }
+  .branch-files { font-size: 10px; color: #818cf8; margin-top: 3px; }
+
+  /* Event feed */
+  .event {
+    padding: 7px 10px;
+    border-bottom: 1px solid #1e293b0a;
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    transition: background 0.2s;
+    border-left: 3px solid transparent;
+    position: relative;
+  }
+  .event:hover { background: #1a2744; }
+  .event.new { animation: fadeIn 0.6s ease-in; }
+  @keyframes fadeIn { from { background: #2a3f5f; } to { background: transparent; } }
+  .event.priority-critical { border-left-color: #ff0000; }
+  .event.priority-warning { border-left-color: #ff8800; }
+  .event.priority-info { border-left-color: #4ac0ff; }
+  .event.priority-success { border-left-color: #34d399; }
+  .event.priority-ambient { border-left-color: transparent; opacity: 0.6; }
+
+  .event-time { color: #64748b; font-size: 10px; white-space: nowrap; min-width: 42px; padding-top: 2px; }
+  .event-who { font-weight: 600; min-width: 44px; font-size: 11px; padding-top: 2px; }
+  .event-body { flex: 1; min-width: 0; }
+  .event-summary { color: #e2e8f0; font-size: 12px; word-break: break-word; }
+  .event-meta { color: #64748b; font-size: 10px; margin-top: 2px; }
+  .event-files { color: #818cf8; font-size: 10px; margin-top: 2px; }
+  .event-type {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    white-space: nowrap;
+    margin-top: 2px;
+    background: #1e293b;
+    color: #94a3b8;
+  }
+  .event-reply-btn {
+    background: none;
+    border: none;
+    color: #475569;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 4px;
+    margin-top: 1px;
+    flex-shrink: 0;
+  }
+  .event-reply-btn:hover { color: #4ac0ff; }
+
+  /* Thread panel */
+  .thread-panel {
+    margin-left: 50px;
+    background: #0d1320;
+    border-left: 2px solid #1e293b;
+    padding: 6px 10px;
+    margin-bottom: 4px;
+  }
+  .thread-panel .event { padding: 4px 8px; font-size: 12px; border-left: none; }
+  .thread-input-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 4px 0;
+  }
+  .thread-input {
+    flex: 1;
+    background: #0a0e1a;
+    border: 1px solid #334155;
+    color: #c8d0e0;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 11px;
+  }
+  .thread-input:focus { outline: none; border-color: #4ac0ff; }
+  .thread-send-btn {
+    background: #1e3a5f;
+    border: 1px solid #334155;
+    color: #4ac0ff;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .thread-send-btn:hover { background: #2a4f7f; }
+
+  /* Pinned events */
+  .pinned-section {
+    border-bottom: 1px solid #7f1d1d;
+    margin-bottom: 4px;
+    padding-bottom: 4px;
+  }
+  .pinned-label {
+    font-size: 9px;
+    color: #f87171;
+    padding: 2px 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* Message bar */
+  .message-bar {
+    background: #111827;
+    border-top: 1px solid #1e293b;
+    padding: 10px 16px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .msg-input {
+    flex: 1;
+    background: #0a0e1a;
+    border: 1px solid #334155;
+    color: #c8d0e0;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 13px;
+    resize: none;
+  }
+  .msg-input:focus { outline: none; border-color: #4ac0ff; }
+  .msg-btn {
+    background: #1e3a5f;
+    border: 1px solid #334155;
+    color: #4ac0ff;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .msg-btn:hover { background: #2a4f7f; }
+  .msg-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .mic-btn {
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #c8d0e0;
+    width: 38px;
+    height: 38px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .mic-btn:hover { background: #334155; }
+  .mic-btn.recording {
+    background: #7f1d1d;
+    border-color: #f87171;
+    color: #f87171;
+    animation: micPulse 1s ease-in-out infinite;
+  }
+  @keyframes micPulse {
+    0%, 100% { box-shadow: none; }
+    50% { box-shadow: 0 0 12px rgba(248,113,113,0.5); }
+  }
+
+  /* Empty state */
+  .empty-state { padding: 20px; color: #64748b; font-style: italic; font-size: 12px; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: #0a0e1a; }
+  ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    .row-split { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <h1>AXIS Producer</h1>
+  <span id="conn-status" class="status">connecting...</span>
+  <div class="spacer"></div>
+  <button id="sound-toggle" class="header-btn" title="Toggle alert sounds">Sound: OFF</button>
+  <span class="header-label">User:</span>
+  <input id="user-input" class="header-input" type="text" placeholder="your name" spellcheck="false">
+</div>
+
+<!-- Scrollable content -->
+<div class="main-scroll" id="main-scroll">
+
+  <!-- Team Activity + Conflicts -->
+  <div class="row-split">
+    <div class="panel">
+      <div class="panel-header">Team Activity <span id="people-badge" class="badge">0</span></div>
+      <div class="panel-body" id="people-panel">
+        <div class="empty-state">No activity in the last hour</div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">Conflicts &amp; Alerts <span id="conflicts-badge" class="badge">0</span></div>
+      <div class="panel-body" id="conflicts-panel">
+        <div class="empty-state">No conflicts detected</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Branches -->
+  <div class="panel">
+    <div class="panel-header">Branches <span id="branches-badge" class="badge">0</span></div>
+    <div class="panel-body">
+      <div class="branches-wrap" id="branches-panel">
+        <div class="empty-state">Waiting for branch data...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Feed -->
+  <div class="panel" style="flex:1; min-height:200px;">
+    <div class="panel-header">Live Event Feed <span id="feed-badge" class="badge">0</span></div>
+    <div class="panel-body feed-body" id="feed-panel"></div>
+  </div>
+
+</div>
+
+<!-- Message bar -->
+<div class="message-bar">
+  <input id="msg-input" class="msg-input" type="text" placeholder="Type a message..." autocomplete="off">
+  <button id="mic-btn" class="mic-btn" title="Hold to record voice">&#x1F3A4;</button>
+  <button id="send-btn" class="msg-btn">Send</button>
+</div>
+
+<script>
+// ============================================================
+// Config
+// ============================================================
+const SUPABASE_URL = 'https://vktcojdvracuzwzeqisw.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_NAeW_rDUSS-oiM03p2JD5Q_IWWKPAmK';
+const POLL_MS = 5000;
+const MAX_EVENTS = 500;
+const PRESENCE_MS = 30000;
+
+// ============================================================
+// State
+// ============================================================
+let lastEventId = 0;
+let allEvents = [];       // newest first
+let presenceMap = {};      // who -> last ts
+let soundEnabled = false;
+let audioCtx = null;
+let recording = false;
+let mediaRecorder = null;
+
+// ============================================================
+// User identity
+// ============================================================
+const userInput = document.getElementById('user-input');
+userInput.value = localStorage.getItem('axis_user') || '';
+if (!userInput.value) {
+  const name = prompt('Enter your name for AXIS:');
+  if (name) {
+    userInput.value = name.trim().toLowerCase();
+    localStorage.setItem('axis_user', userInput.value);
+  }
+}
+userInput.addEventListener('change', () => {
+  const v = userInput.value.trim().toLowerCase();
+  if (v) localStorage.setItem('axis_user', v);
+});
+function getUser() { return (userInput.value || 'anon').trim().toLowerCase(); }
+
+// ============================================================
+// Sound toggle
+// ============================================================
+const soundBtn = document.getElementById('sound-toggle');
+soundBtn.addEventListener('click', () => {
+  soundEnabled = !soundEnabled;
+  soundBtn.textContent = soundEnabled ? 'Sound: ON' : 'Sound: OFF';
+  soundBtn.classList.toggle('active', soundEnabled);
+  if (soundEnabled && !audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+});
+function playBeep() {
+  if (!soundEnabled || !audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.frequency.value = 880;
+  osc.type = 'square';
+  gain.gain.value = 0.1;
+  osc.start();
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+  osc.stop(audioCtx.currentTime + 0.3);
+}
+
+// ============================================================
+// Supabase REST
+// ============================================================
+async function sbQuery(table, params = '') {
+  const url = `${SUPABASE_URL}/rest/v1/${table}?${params}`;
+  const resp = await fetch(url, {
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+  });
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+  return resp.json();
+}
+
+async function sbInsert(table, data) {
+  const url = `${SUPABASE_URL}/rest/v1/${table}`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    },
+    body: JSON.stringify(data)
+  });
+  if (!resp.ok) throw new Error(`Insert failed: ${resp.status}`);
+  return resp.json();
+}
+
+// ============================================================
+// Local API helpers
+// ============================================================
+async function apiTranscribe(blob) {
+  const form = new FormData();
+  form.append('audio', blob, 'recording.webm');
+  const resp = await fetch('/api/transcribe', { method: 'POST', body: form });
+  if (!resp.ok) throw new Error('Transcribe failed');
+  return resp.json();
+}
+
+async function apiChat(payload) {
+  const resp = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!resp.ok) throw new Error('Chat failed');
+  return resp.json();
+}
+
+// ============================================================
+// Priority classification
+// ============================================================
+function classifyPriority(e) {
+  const st = e.stream || '';
+  const et = e.event_type || '';
+  // critical
+  if (['merge_conflict', 'file_conflict'].includes(et)) return 'critical';
+  if (et === 'blocker' && (e.summary || '').toLowerCase().includes('critical')) return 'critical';
+  // warning
+  if (et === 'unpushed' && (e.raw || {}).count > 5) return 'warning';
+  if (et === 'divergence' && (e.raw || {}).count > 10) return 'warning';
+  if (et === 'blocker' || et === 'blockers') return 'warning';
+  // success
+  if (et === 'resolved' || et === 'merge_complete') return 'success';
+  // info
+  if (['commit', 'decision', 'action_item', 'chat', 'voice_chat'].includes(et)) return 'info';
+  if (st === 'chat' || st === 'voice_chat') return 'info';
+  // ambient
+  if (['file_read', 'fetch', 'presence', 'search'].includes(et)) return 'ambient';
+  if (st === 'presence') return 'ambient';
+  // default info
+  return 'info';
+}
+
+// ============================================================
+// Helpers
+// ============================================================
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+function timeStr(ts) {
+  try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+  catch { return '??:??'; }
+}
+
+function whoColor(who) {
+  const w = (who || '').toLowerCase();
+  if (w === 'stu') return 'color-stu';
+  if (w === 'adam') return 'color-adam';
+  return 'color-other';
+}
+
+function shortFile(f) {
+  return (f || '').replace(/\\/g, '/').split('/').pop();
+}
+
+function isOnline(who) {
+  const last = presenceMap[(who || '').toLowerCase()];
+  if (!last) return false;
+  return (Date.now() - new Date(last).getTime()) < 60000;
+}
+
+// ============================================================
+// Rendering: Team Activity
+// ============================================================
+function renderPeople() {
+  const now = Date.now();
+  const cutoff = now - 3600000;
+  const recent = allEvents.filter(e => new Date(e.ts).getTime() > cutoff && e.stream !== 'presence');
+
+  const byWho = {};
+  for (const e of recent) {
+    const w = (e.who || 'unknown').toLowerCase();
+    if (!byWho[w]) byWho[w] = { events: [], files: new Set(), types: {} };
+    byWho[w].events.push(e);
+    (e.files || []).forEach(f => byWho[w].files.add(shortFile(f)));
+    byWho[w].types[e.event_type] = (byWho[w].types[e.event_type] || 0) + 1;
+  }
+
+  const panel = document.getElementById('people-panel');
+  const names = Object.keys(byWho);
+  document.getElementById('people-badge').textContent = names.length + ' active';
+
+  if (!names.length) {
+    panel.innerHTML = '<div class="empty-state">No activity in the last hour</div>';
+    return;
+  }
+
+  panel.innerHTML = names.map(who => {
+    const d = byWho[who];
+    const typeStr = Object.entries(d.types).sort((a, b) => b[1] - a[1]).slice(0, 4)
+      .map(([t, c]) => `${t}:${c}`).join(', ');
+    const filesArr = [...d.files].slice(0, 6);
+    const online = isOnline(who);
+
+    return `<div class="person-card">
+      <h3 class="${whoColor(who)}">
+        <span class="presence-dot ${online ? 'online' : 'offline'}"></span>
+        ${escapeHtml(who)}
+        <span style="font-weight:normal;color:#64748b;font-size:10px;">(${d.events.length})</span>
+      </h3>
+      <div class="stat">${typeStr}</div>
+      ${filesArr.length ? `<div class="files">${filesArr.join(', ')}${d.files.size > 6 ? ' +' + (d.files.size - 6) + ' more' : ''}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// ============================================================
+// Rendering: Conflicts
+// ============================================================
+function renderConflicts() {
+  const now = Date.now();
+  const cutoff = now - 7200000;
+  const recent = allEvents.filter(e => new Date(e.ts).getTime() > cutoff);
+
+  // File overlap detection
+  const filesByWho = {};
+  for (const e of recent) {
+    for (const f of (e.files || [])) {
+      const name = shortFile(f);
+      if (!filesByWho[name]) filesByWho[name] = new Set();
+      filesByWho[name].add((e.who || '').toLowerCase());
+    }
+  }
+  const conflicts = [];
+  for (const [file, people] of Object.entries(filesByWho)) {
+    if (people.size > 1) conflicts.push({ file, people: [...people] });
+  }
+
+  // Blockers
+  const blockers = recent.filter(e => e.event_type === 'blocker' || e.event_type === 'blockers');
+
+  // Merge/file conflict events
+  const conflictEvents = recent.filter(e =>
+    e.event_type === 'merge_conflict' || e.event_type === 'file_conflict'
+  );
+
+  const panel = document.getElementById('conflicts-panel');
+  const total = conflicts.length + blockers.length + conflictEvents.length;
+  document.getElementById('conflicts-badge').textContent = total;
+
+  let html = '';
+
+  for (const ce of conflictEvents) {
+    const isNew = (now - new Date(ce.ts).getTime()) < 300000;
+    html += `<div class="conflict${isNew ? ' pulse' : ''}">
+      <div class="conflict-title">CONFLICT: ${escapeHtml(ce.event_type)}</div>
+      <div class="conflict-detail">${escapeHtml(ce.who)}: ${escapeHtml(ce.summary || '')}</div>
+    </div>`;
+  }
+
+  for (const c of conflicts) {
+    html += `<div class="conflict">
+      <div class="conflict-title">File Overlap</div>
+      <div class="conflict-detail"><strong>${escapeHtml(c.file)}</strong> touched by ${c.people.join(' + ')}</div>
+    </div>`;
+  }
+
+  for (const b of blockers) {
+    html += `<div class="conflict" style="border-color:#991b1b;">
+      <div class="conflict-title">Blocker</div>
+      <div class="conflict-detail">${escapeHtml(b.who)}: ${escapeHtml(b.summary || '')}</div>
+    </div>`;
+  }
+
+  panel.innerHTML = html || '<div class="empty-state">No conflicts detected</div>';
+}
+
+// ============================================================
+// Rendering: Branches
+// ============================================================
+function renderBranches() {
+  const branchEvents = allEvents.filter(e => e.event_type === 'branch_status');
+  const byBranch = {};
+  for (const e of branchEvents) {
+    const branch = (e.raw || {}).branch || e.area || '?';
+    if (!byBranch[branch]) byBranch[branch] = e;
+  }
+
+  const branches = Object.values(byBranch);
+  const panel = document.getElementById('branches-panel');
+  document.getElementById('branches-badge').textContent = branches.length;
+
+  if (!branches.length) {
+    panel.innerHTML = '<div class="empty-state">Waiting for branch data...</div>';
+    return;
+  }
+
+  branches.sort((a, b) => {
+    const ac = (a.raw || {}).is_current ? 1 : 0;
+    const bc = (b.raw || {}).is_current ? 1 : 0;
+    if (ac !== bc) return bc - ac;
+    return ((b.raw || {}).ahead || 0) - ((a.raw || {}).ahead || 0);
+  });
+
+  panel.innerHTML = branches.map(e => {
+    const r = e.raw || {};
+    const isCurrent = r.is_current;
+    const branch = r.branch || e.area || '?';
+    const author = r.author || e.who || '?';
+    const ahead = r.ahead || 0;
+    const behind = r.behind || 0;
+    const unpushed = r.unpushed || 0;
+    const unpulled = r.unpulled || 0;
+    const files = (e.files || []).map(shortFile);
+
+    let stats = `+${ahead}/-${behind} vs main`;
+    if (unpushed > 0) stats += ` &middot; <span class="warn">${unpushed} unpushed</span>`;
+    if (unpulled > 0) stats += ` &middot; <span class="warn">${unpulled} unpulled</span>`;
+
+    return `<div class="branch-card">
+      <div class="branch-name ${isCurrent ? 'current' : ''}">${escapeHtml(branch)}</div>
+      <div class="branch-stats">${escapeHtml(author)} &middot; ${stats}</div>
+      ${files.length ? `<div class="branch-files">${files.slice(0, 6).join(', ')}${files.length > 6 ? ' +more' : ''}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// ============================================================
+// Rendering: Feed
+// ============================================================
+function renderEventHtml(e, isNew) {
+  const priority = classifyPriority(e);
+  const files = (e.files || []).map(shortFile);
+
+  return `<div class="event ${isNew ? 'new ' : ''}priority-${priority}" data-id="${e.id}">
+    <span class="event-time">${timeStr(e.ts)}</span>
+    <span class="event-who ${whoColor(e.who)}">${escapeHtml(e.who)}</span>
+    <div class="event-body">
+      <div class="event-summary">${escapeHtml(e.summary || '')}</div>
+      ${files.length ? `<div class="event-files">${files.join(', ')}</div>` : ''}
+      <div class="event-meta">${escapeHtml(e.stream || '')}${e.area ? ' / ' + escapeHtml(e.area) : ''}</div>
+    </div>
+    <span class="event-type">${escapeHtml(e.event_type || '?')}</span>
+    <button class="event-reply-btn" onclick="toggleThread(${e.id})" title="Reply">&#8617;</button>
+  </div><div id="thread-${e.id}"></div>`;
+}
+
+function renderFeed(newEvents) {
+  const panel = document.getElementById('feed-panel');
+  document.getElementById('feed-badge').textContent = allEvents.length + ' events';
+
+  if (newEvents && newEvents.length > 0) {
+    // Separate critical (pinned) vs others
+    const critical = newEvents.filter(e => classifyPriority(e) === 'critical');
+    const rest = newEvents.filter(e => classifyPriority(e) !== 'critical');
+
+    // Insert critical at very top (pinned section)
+    if (critical.length) {
+      let pinned = document.getElementById('pinned-section');
+      if (!pinned) {
+        panel.insertAdjacentHTML('afterbegin',
+          '<div id="pinned-section" class="pinned-section"><div class="pinned-label">PINNED CRITICAL</div></div>');
+        pinned = document.getElementById('pinned-section');
+      }
+      const pinnedLabel = pinned.querySelector('.pinned-label');
+      for (const e of critical) {
+        pinnedLabel.insertAdjacentHTML('afterend', renderEventHtml(e, true));
+      }
+      playBeep();
+    }
+
+    // Insert rest after pinned section
+    const insertPoint = document.getElementById('pinned-section');
+    const html = rest.map(e => renderEventHtml(e, true)).join('');
+    if (insertPoint) {
+      insertPoint.insertAdjacentHTML('afterend', html);
+    } else {
+      panel.insertAdjacentHTML('afterbegin', html);
+    }
+
+    // Trim
+    const allEventDivs = panel.querySelectorAll('.event');
+    if (allEventDivs.length > MAX_EVENTS) {
+      for (let i = MAX_EVENTS; i < allEventDivs.length; i++) {
+        const el = allEventDivs[i];
+        // Also remove thread container following it
+        if (el.nextElementSibling && el.nextElementSibling.id && el.nextElementSibling.id.startsWith('thread-')) {
+          el.nextElementSibling.remove();
+        }
+        el.remove();
+      }
+    }
+  } else if (panel.children.length === 0 && allEvents.length > 0) {
+    // Initial full render
+    const critical = allEvents.filter(e => classifyPriority(e) === 'critical');
+    const rest = allEvents.filter(e => classifyPriority(e) !== 'critical');
+
+    let html = '';
+    if (critical.length) {
+      html += '<div id="pinned-section" class="pinned-section"><div class="pinned-label">PINNED CRITICAL</div>';
+      html += critical.map(e => renderEventHtml(e, false)).join('');
+      html += '</div>';
+    }
+    html += rest.slice(0, MAX_EVENTS).map(e => renderEventHtml(e, false)).join('');
+    panel.innerHTML = html;
+  }
+}
+
+// ============================================================
+// Threading
+// ============================================================
+async function toggleThread(parentId) {
+  const container = document.getElementById('thread-' + parentId);
+  if (!container) return;
+
+  // Toggle
+  if (container.innerHTML) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = '<div style="padding:6px;color:#64748b;font-size:11px;">Loading thread...</div>';
+
+  try {
+    const replies = await sbQuery('events', `parent_id=eq.${parentId}&order=ts.asc`);
+    let html = '<div class="thread-panel">';
+    if (replies.length) {
+      html += replies.map(e => `<div class="event priority-${classifyPriority(e)}">
+        <span class="event-time">${timeStr(e.ts)}</span>
+        <span class="event-who ${whoColor(e.who)}">${escapeHtml(e.who)}</span>
+        <div class="event-body"><div class="event-summary">${escapeHtml(e.summary || '')}</div></div>
+      </div>`).join('');
+    } else {
+      html += '<div style="color:#64748b;font-size:11px;padding:4px;">No replies yet</div>';
+    }
+    html += `<div class="thread-input-row">
+      <input class="thread-input" type="text" placeholder="Reply..." id="thread-input-${parentId}" autocomplete="off">
+      <button class="thread-send-btn" onclick="sendThreadReply(${parentId})">Reply</button>
+    </div></div>`;
+    container.innerHTML = html;
+
+    // Enter key
+    const inp = document.getElementById('thread-input-' + parentId);
+    if (inp) inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') sendThreadReply(parentId); });
+  } catch (err) {
+    container.innerHTML = `<div style="padding:6px;color:#f87171;font-size:11px;">Error: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function sendThreadReply(parentId) {
+  const inp = document.getElementById('thread-input-' + parentId);
+  if (!inp) return;
+  const text = inp.value.trim();
+  if (!text) return;
+  inp.value = '';
+
+  const payload = {
+    who: getUser(),
+    text: text,
+    stream: 'chat',
+    event_type: 'chat',
+    parent_id: parentId,
+    ts: new Date().toISOString()
+  };
+
+  try {
+    await apiChat(payload);
+  } catch {
+    // Fallback: insert directly
+    try {
+      await sbInsert('events', {
+        who: payload.who,
+        stream: payload.stream,
+        event_type: payload.event_type,
+        summary: text,
+        parent_id: parentId,
+        ts: payload.ts
+      });
+    } catch (err2) {
+      console.error('Thread reply failed:', err2);
+    }
+  }
+
+  // Refresh thread
+  const container = document.getElementById('thread-' + parentId);
+  if (container) container.innerHTML = '';
+  toggleThread(parentId);
+}
+
+// ============================================================
+// Send message
+// ============================================================
+async function sendMessage(text, stream, eventType, parentId) {
+  if (!text) return;
+  const payload = {
+    who: getUser(),
+    text: text,
+    stream: stream || 'chat',
+    event_type: eventType || 'chat',
+    parent_id: parentId || null,
+    ts: new Date().toISOString()
+  };
+
+  try {
+    await apiChat(payload);
+  } catch {
+    // Fallback direct insert
+    try {
+      await sbInsert('events', {
+        who: payload.who,
+        stream: payload.stream,
+        event_type: payload.event_type,
+        summary: text,
+        parent_id: payload.parent_id,
+        ts: payload.ts
+      });
+    } catch (err) {
+      console.error('Send failed:', err);
+      alert('Failed to send message');
+    }
+  }
+}
+
+// Message bar handlers
+const msgInput = document.getElementById('msg-input');
+const sendBtn = document.getElementById('send-btn');
+
+sendBtn.addEventListener('click', () => {
+  const text = msgInput.value.trim();
+  if (text) { sendMessage(text, 'chat', 'chat'); msgInput.value = ''; }
+});
+msgInput.addEventListener('keydown', ev => {
+  if (ev.key === 'Enter' && !ev.shiftKey) {
+    ev.preventDefault();
+    sendBtn.click();
+  }
+});
+
+// ============================================================
+// Mic / voice recording
+// ============================================================
+const micBtn = document.getElementById('mic-btn');
+
+micBtn.addEventListener('click', async () => {
+  if (recording) {
+    // Stop
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const chunks = [];
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+
+    mediaRecorder.onstop = async () => {
+      recording = false;
+      micBtn.classList.remove('recording');
+      stream.getTracks().forEach(t => t.stop());
+
+      if (!chunks.length) return;
+      const blob = new Blob(chunks, { type: 'audio/webm' });
+      micBtn.textContent = '...';
+
+      try {
+        const result = await apiTranscribe(blob);
+        const text = (result.text || '').trim();
+        if (text) {
+          await sendMessage(text, 'voice_chat', 'chat');
+        }
+      } catch (err) {
+        console.error('Transcription failed:', err);
+      }
+
+      micBtn.innerHTML = '&#x1F3A4;';
+    };
+
+    mediaRecorder.start();
+    recording = true;
+    micBtn.classList.add('recording');
+  } catch (err) {
+    console.error('Mic access failed:', err);
+    alert('Microphone access denied');
+  }
+});
+
+// ============================================================
+// Presence
+// ============================================================
+function updatePresenceFromEvents() {
+  for (const e of allEvents) {
+    if (e.stream === 'presence' || e.event_type === 'presence') {
+      const w = (e.who || '').toLowerCase();
+      if (!presenceMap[w] || new Date(e.ts) > new Date(presenceMap[w])) {
+        presenceMap[w] = e.ts;
+      }
+    }
+  }
+}
+
+async function sendPresence() {
+  const who = getUser();
+  if (!who || who === 'anon') return;
+  try {
+    await sbInsert('events', {
+      who: who,
+      stream: 'presence',
+      event_type: 'presence',
+      summary: 'online',
+      ts: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Presence failed:', err);
+  }
+}
+
+// ============================================================
+// Polling
+// ============================================================
+async function poll() {
+  try {
+    const events = await sbQuery('events', `id=gt.${lastEventId}&order=id.asc&limit=100`);
+
+    if (events.length > 0) {
+      lastEventId = Math.max(...events.map(e => e.id));
+      const reversed = [...events].reverse();
+      allEvents = [...reversed, ...allEvents].slice(0, 2000);
+
+      // Filter out presence for feed rendering
+      const feedEvents = reversed.filter(e => e.stream !== 'presence' && e.event_type !== 'presence');
+
+      updatePresenceFromEvents();
+
+      if (feedEvents.length) renderFeed(feedEvents);
+      renderPeople();
+      renderConflicts();
+      renderBranches();
+
+      // Beep on critical
+      if (feedEvents.some(e => classifyPriority(e) === 'critical')) playBeep();
+    }
+
+    const statusEl = document.getElementById('conn-status');
+    statusEl.textContent = `Live \u2022 ${allEvents.length} events`;
+    statusEl.className = 'status connected';
+  } catch (err) {
+    const statusEl = document.getElementById('conn-status');
+    statusEl.textContent = `Error: ${err.message}`;
+    statusEl.className = 'status error';
+    console.error('Poll error:', err);
+  }
+}
+
+// ============================================================
+// Init
+// ============================================================
+async function init() {
+  const statusEl = document.getElementById('conn-status');
+
+  try {
+    const history = await sbQuery('events', 'order=id.desc&limit=300');
+    if (history.length > 0) {
+      allEvents = history;
+      lastEventId = history[0].id;
+
+      updatePresenceFromEvents();
+
+      renderFeed();
+      renderPeople();
+      renderConflicts();
+      renderBranches();
+    }
+    statusEl.textContent = `Connected \u2022 ${allEvents.length} events loaded`;
+    statusEl.className = 'status connected';
+  } catch (err) {
+    statusEl.textContent = `Connection failed: ${err.message}`;
+    statusEl.className = 'status error';
+  }
+
+  // Start polling
+  setInterval(poll, POLL_MS);
+
+  // Start presence heartbeat
+  sendPresence();
+  setInterval(sendPresence, PRESENCE_MS);
+}
+
+init();
+</script>
+</body>
+</html>

@@ -21,6 +21,11 @@ from meeting_assistant import copy_to_clipboard
 from daily_briefing import Briefing
 from settings import Settings
 from tray_icons import icon_idle, icon_detecting, icon_recording
+from notifications import (
+    Notification, PRIORITY_CONFIG, should_show,
+    git_alert, remote_event, blocker_alert, synthesis_ready,
+    scope_alert, vcs_insight, make_notification,
+)
 
 
 class TrayApp:
@@ -42,6 +47,9 @@ class TrayApp:
             on_briefing=self._on_briefing,
             on_scope_alert=self._on_scope_alert,
             on_items_logged=self._on_items_logged,
+            on_remote_event=self._on_remote_event,
+            on_claude_event=self._on_claude_event,
+            on_synthesis=self._on_synthesis,
         )
 
         # Tkinter runs on its own daemon thread for popup dialogs
@@ -115,6 +123,15 @@ class TrayApp:
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
+                "Open Dashboard",
+                self._on_open_dashboard,
+            ),
+            pystray.MenuItem(
+                "Run Setup...",
+                self._on_run_setup,
+            ),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem(
                 "Verbose",
                 self._on_toggle_verbose,
                 checked=lambda item: self.settings.verbose,
@@ -168,6 +185,19 @@ class TrayApp:
 
     def _on_show_blockers(self, icon, item):
         self._tk_queue.put(("blockers",))
+
+    def _on_open_dashboard(self, icon, item):
+        import webbrowser
+        port = self.settings.dashboard_port
+        webbrowser.open(f"http://localhost:{port}/dashboard.html")
+
+    def _on_run_setup(self, icon, item):
+        import subprocess
+        subprocess.Popen(
+            ["python", "setup.py"],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            creationflags=subprocess.CREATE_NEW_CONSOLE,
+        )
 
     def _on_toggle_verbose(self, icon, item):
         self.settings.verbose = not self.settings.verbose
@@ -230,6 +260,21 @@ class TrayApp:
         """Called after each batch — show brief taskbar toast summarizing logged items."""
         self._tk_queue.put(("items_logged", items))
 
+    def _on_remote_event(self, event):
+        """Called when another team member's event arrives via cloud sync."""
+        notif = remote_event(event)
+        if should_show(notif, self.settings.notification_level):
+            self._tk_queue.put(("notification", notif))
+
+    def _on_claude_event(self, event):
+        """Called when Claude Code activity is detected locally."""
+        pass  # local events are informational; only surface remote events
+
+    def _on_synthesis(self, summary):
+        """Called when a team activity synthesis is generated."""
+        notif = synthesis_ready(summary)
+        self._tk_queue.put(("notification", notif))
+
     # ----- Tkinter thread (for dialogs) -----
 
     def _tk_loop(self):
@@ -266,6 +311,12 @@ class TrayApp:
                     self._show_scope_alert(msg[1])
                 elif msg[0] == "items_logged":
                     self._show_items_toast(msg[1])
+                elif msg[0] == "remote_event":
+                    self._show_remote_event_toast(msg[1])
+                elif msg[0] == "synthesis":
+                    self._show_synthesis_toast(msg[1])
+                elif msg[0] == "notification":
+                    self._show_notification(msg[1])
         except queue.Empty:
             pass
         if self._tk_root:
@@ -893,6 +944,187 @@ class TrayApp:
         # Auto-close after 30 seconds (long enough to read)
         toast.after(30000, lambda: toast.destroy() if toast.winfo_exists() else None)
 
+    def _show_remote_event_toast(self, event: dict):
+        """Show a brief toast when a team member's event arrives."""
+        who = event.get("who", "?")
+        stream = event.get("stream", "?")
+        summary = event.get("summary", "")[:100]
+
+        toast = tk.Toplevel(self._tk_root)
+        toast.title("AXIS — Team Activity")
+        toast.attributes("-topmost", True)
+        toast.overrideredirect(True)
+        toast.configure(bg="#1a2a44")
+
+        screen_w = toast.winfo_screenwidth()
+        screen_h = toast.winfo_screenheight()
+        toast.geometry(f"380x60+{screen_w - 400}+{screen_h - 120}")
+
+        tk.Label(
+            toast, text=f"\u25cf {who} ({stream})",
+            bg="#1a2a44", fg="#4ac0ff",
+            font=("Consolas", 10, "bold"), anchor="w",
+        ).pack(fill="x", padx=10, pady=(6, 0))
+
+        tk.Label(
+            toast, text=summary,
+            bg="#1a2a44", fg="#cccccc",
+            font=("Consolas", 9), anchor="w",
+        ).pack(fill="x", padx=10, pady=(0, 6))
+
+        toast.after(8000, lambda: toast.destroy() if toast.winfo_exists() else None)
+
+    def _show_synthesis_toast(self, summary: str):
+        """Show a larger toast with the team activity synthesis."""
+        toast = tk.Toplevel(self._tk_root)
+        toast.title("AXIS — Team Synthesis")
+        toast.attributes("-topmost", True)
+        toast.resizable(True, True)
+
+        screen_w = toast.winfo_screenwidth()
+        screen_h = toast.winfo_screenheight()
+        w, h = 500, 400
+        toast.geometry(f"{w}x{h}+{screen_w - w - 20}+{screen_h - h - 80}")
+
+        title_frame = tk.Frame(toast, bg="#1a2a44")
+        title_frame.pack(fill="x")
+
+        tk.Label(
+            title_frame, text="\u2261 Team Activity Synthesis",
+            bg="#1a2a44", fg="#4ac0ff",
+            font=("Consolas", 11, "bold"), anchor="w",
+        ).pack(side="left", padx=10, pady=6)
+
+        close_btn = tk.Button(
+            title_frame, text="X", command=toast.destroy,
+            bg="#1a2a44", fg="#ff4444", relief="flat",
+            font=("Consolas", 10, "bold"), width=3,
+        )
+        close_btn.pack(side="right", padx=4, pady=4)
+
+        text_widget = tk.Text(
+            toast, bg="#0e1225", fg="#cccccc",
+            font=("Consolas", 9), wrap="word",
+            relief="flat", padx=10, pady=10,
+        )
+        text_widget.pack(fill="both", expand=True)
+        text_widget.insert("1.0", summary)
+        text_widget.configure(state="disabled")
+
+        toast.after(60000, lambda: toast.destroy() if toast.winfo_exists() else None)
+
+    def _show_notification(self, notif: Notification):
+        """Unified notification renderer — appearance based on priority tier."""
+        config = notif.config
+        color = config["color"]
+        border = config["border"]
+        auto_ms = config["auto_dismiss_ms"]
+        w, h = config["size"]
+
+        toast = tk.Toplevel(self._tk_root)
+        toast.attributes("-topmost", True)
+        toast.overrideredirect(True)
+
+        screen_w = toast.winfo_screenwidth()
+        screen_h = toast.winfo_screenheight()
+        toast.geometry(f"{w}x{h}+{screen_w - w - 20}+{screen_h - h - 80}")
+
+        if border > 0:
+            # Colored border frame
+            outer = tk.Frame(toast, bg=color, padx=border, pady=border)
+            outer.pack(fill="both", expand=True)
+            inner = tk.Frame(outer, bg="#1a1a2e")
+            inner.pack(fill="both", expand=True)
+        else:
+            inner = tk.Frame(toast, bg="#1a1a2e")
+            inner.pack(fill="both", expand=True)
+
+        # Title
+        title_color = color if notif.priority != "ambient" else "#94a3b8"
+        tk.Label(
+            inner, text=notif.title,
+            bg="#1a1a2e", fg=title_color,
+            font=("Consolas", 10, "bold"), anchor="w",
+        ).pack(fill="x", padx=10, pady=(6, 0))
+
+        # Body
+        body_color = "#e2e8f0" if notif.priority != "ambient" else "#94a3b8"
+        tk.Label(
+            inner, text=notif.body[:120],
+            bg="#1a1a2e", fg=body_color,
+            font=("Consolas", 9), anchor="w", wraplength=w - 30,
+            justify="left",
+        ).pack(fill="x", padx=10, pady=(2, 0))
+
+        # Details line
+        if notif.details:
+            tk.Label(
+                inner, text=notif.details[:80],
+                bg="#1a1a2e", fg="#64748b",
+                font=("Consolas", 8), anchor="w",
+            ).pack(fill="x", padx=10, pady=(1, 0))
+
+        # Files
+        if notif.files:
+            import os as _os
+            file_names = ", ".join(_os.path.basename(f) for f in notif.files[:4])
+            if len(notif.files) > 4:
+                file_names += f" +{len(notif.files) - 4}"
+            tk.Label(
+                inner, text=file_names,
+                bg="#1a1a2e", fg="#818cf8",
+                font=("Consolas", 8), anchor="w",
+            ).pack(fill="x", padx=10, pady=(1, 0))
+
+        # Critical: dismiss button + pulsing + beep
+        if notif.priority == "critical":
+            btn_frame = tk.Frame(inner, bg="#1a1a2e")
+            btn_frame.pack(fill="x", padx=10, pady=(4, 6))
+            tk.Button(
+                btn_frame, text="Dismiss", command=toast.destroy,
+                bg="#3f1e1e", fg="#ff4444", relief="flat",
+                font=("Consolas", 9, "bold"),
+            ).pack(side="right")
+
+            # Pulsing border effect
+            if border > 0:
+                self._pulse_border(outer, color, "#660000", toast)
+
+            # Sound
+            try:
+                import winsound
+                winsound.Beep(1000, 200)
+            except Exception:
+                pass
+
+        # Aggressive mode: beep on warnings too
+        elif notif.priority == "warning" and self.settings.aggressive_alerts:
+            try:
+                import winsound
+                winsound.Beep(800, 150)
+            except Exception:
+                pass
+
+        # Click-to-dismiss (non-critical)
+        if notif.priority != "critical":
+            for widget in [toast, inner]:
+                widget.bind("<Button-1>", lambda e: toast.destroy())
+
+        # Auto-dismiss
+        if auto_ms > 0:
+            toast.after(auto_ms, lambda: toast.destroy()
+                        if toast.winfo_exists() else None)
+
+    def _pulse_border(self, frame, color_a, color_b, parent, interval=500):
+        """Alternate border color for pulsing effect."""
+        if not parent.winfo_exists():
+            return
+        current = frame.cget("bg")
+        next_color = color_b if current == color_a else color_a
+        frame.configure(bg=next_color)
+        parent.after(interval, lambda: self._pulse_border(
+            frame, color_a, color_b, parent, interval))
+
     def _show_blockers_panel(self):
         """Show all tracked blockers in a panel."""
         dialog = tk.Toplevel(self._tk_root)
@@ -1028,6 +1260,9 @@ class TrayApp:
 
         # Start briefing scheduler (always-on, independent of recording)
         threading.Timer(2.0, self.controller.start_briefings).start()
+
+        # Start cloud services (Claude monitor + cloud sync, always-on)
+        threading.Timer(3.0, self.controller.start_cloud_services).start()
 
         print("AXIS Producer tray app started")
         print("Right-click the tray icon for options")

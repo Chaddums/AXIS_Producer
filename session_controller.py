@@ -28,6 +28,9 @@ from blocker_tracker import BlockerTracker, Blocker
 from daily_briefing import BriefingScheduler, Briefing
 from scope_guard import ScopeGuard, ScopeAlert
 from vad_detector import VadDetector
+from claude_monitor import ClaudeMonitor, ClaudeEvent
+from cloud_sync import CloudSync
+from git_health import GitHealthMonitor, GitHealthAlert, BranchInfo
 from settings import Settings
 
 
@@ -54,7 +57,10 @@ class SessionController:
                  on_blocker=None,
                  on_briefing=None,
                  on_scope_alert=None,
-                 on_items_logged=None):
+                 on_items_logged=None,
+                 on_remote_event=None,
+                 on_claude_event=None,
+                 on_synthesis=None):
         self.settings = settings
         self.on_state_change = on_state_change        # callback(State)
         self.on_speech_detected = on_speech_detected  # callback() — show popup
@@ -68,6 +74,9 @@ class SessionController:
         self.on_briefing = on_briefing                        # callback(Briefing)
         self.on_scope_alert = on_scope_alert                  # callback(ScopeAlert)
         self.on_items_logged = on_items_logged                # callback(list[(category, text)])
+        self.on_remote_event = on_remote_event                # callback(dict) — other user's event
+        self.on_claude_event = on_claude_event                # callback(ClaudeEvent)
+        self.on_synthesis = on_synthesis                       # callback(str) — team summary
 
         self._state = State.IDLE
         self._lock = threading.Lock()
@@ -91,6 +100,12 @@ class SessionController:
         self._briefing_scheduler: BriefingScheduler | None = None
         self._briefing_stop: threading.Event | None = None
         self._briefing_thread: threading.Thread | None = None
+
+        # Claude monitor + cloud sync (can run independently of recording)
+        self._claude_monitor: ClaudeMonitor | None = None
+        self._cloud_sync: CloudSync | None = None
+        self._cloud_threads: list[threading.Thread] = []
+        self._cloud_stop: threading.Event | None = None
 
         # Recording pipeline state
         self._stop_event: threading.Event | None = None
@@ -162,6 +177,158 @@ class SessionController:
         if self.on_briefing:
             try:
                 self.on_briefing(briefing)
+            except Exception:
+                pass
+
+    # ----- Cloud services (always-on, independent of recording) -----
+
+    def start_cloud_services(self):
+        """Start Claude monitor and cloud sync (runs regardless of recording state)."""
+        if self._cloud_stop and not self._cloud_stop.is_set():
+            return  # already running
+        self._cloud_stop = threading.Event()
+
+        verbose = self.settings.verbose
+
+        # Claude Code conversation monitor
+        if self.settings.claude_monitor:
+            self._claude_monitor = ClaudeMonitor(
+                self._cloud_stop,
+                on_event=self._handle_claude_event,
+                project_paths=self.settings.claude_project_paths or None,
+                poll_interval=self.settings.claude_poll_interval,
+                verbose=verbose,
+            )
+            t = threading.Thread(target=self._claude_monitor.run,
+                                 name="claude-monitor", daemon=True)
+            self._cloud_threads.append(t)
+            t.start()
+
+        # Cloud sync (pushes events to Supabase, subscribes to remote)
+        if (self.settings.cloud_sync and self.settings.supabase_url
+                and self.settings.supabase_key):
+            self._cloud_sync = CloudSync(
+                self._cloud_stop,
+                on_remote_event=self._handle_remote_event,
+                on_synthesis=self._handle_synthesis,
+                supabase_url=self.settings.supabase_url,
+                supabase_key=self.settings.supabase_key,
+                user_identity=self.settings.user_identity,
+                synthesis_interval=self.settings.synthesis_interval,
+                verbose=verbose,
+            )
+            t = threading.Thread(target=self._cloud_sync.run,
+                                 name="cloud-sync", daemon=True)
+            self._cloud_threads.append(t)
+            t.start()
+
+        # Git health monitor (push/pull reminders + branch visibility)
+        repo_path = self.settings.vcs_repo_path or os.path.abspath("../..")
+        self._git_health = GitHealthMonitor(
+            self._cloud_stop,
+            repo_path=repo_path,
+            on_alert=self._handle_git_alert,
+            on_branches=self._handle_branches,
+            poll_interval=self.settings.vcs_poll_interval,
+            verbose=verbose,
+        )
+        t = threading.Thread(target=self._git_health.run,
+                             name="git-health", daemon=True)
+        self._cloud_threads.append(t)
+        t.start()
+
+    def stop_cloud_services(self):
+        """Stop Claude monitor and cloud sync."""
+        if self._cloud_stop:
+            self._cloud_stop.set()
+        for t in self._cloud_threads:
+            t.join(timeout=5.0)
+        self._cloud_threads.clear()
+        self._claude_monitor = None
+        self._cloud_sync = None
+
+    def _handle_git_alert(self, alert: GitHealthAlert):
+        """Called by GitHealthMonitor on push/pull/divergence alerts."""
+        if self._cloud_sync:
+            self._cloud_sync.push_event({
+                "ts": datetime.now().astimezone().isoformat(),
+                "who": self.settings.user_identity,
+                "stream": "git_health",
+                "session_id": "",
+                "event_type": alert.alert_type,
+                "area": None,
+                "files": [],
+                "summary": alert.message,
+                "raw": {"severity": alert.severity, "branch": alert.branch,
+                        **alert.details},
+                "project": None,
+            })
+        # Surface as VCS insight to tray
+        if self.on_vcs_insight:
+            try:
+                self.on_vcs_insight(VcsInsight(
+                    type=alert.alert_type,
+                    summary=alert.message,
+                    details=str(alert.details),
+                    files=[],
+                ))
+            except Exception:
+                pass
+
+    def _handle_branches(self, branches: list[BranchInfo]):
+        """Called by GitHealthMonitor with full branch state."""
+        if not self._cloud_sync:
+            return
+        for b in branches:
+            if b.ahead_of_main == 0 and not b.is_current:
+                continue  # skip inactive branches with no new work
+            self._cloud_sync.push_event({
+                "ts": b.last_commit_time or datetime.now().astimezone().isoformat(),
+                "who": self.settings.user_identity,
+                "stream": "git_branch",
+                "session_id": "",
+                "event_type": "branch_status",
+                "area": b.name,
+                "files": b.recent_files[:10],
+                "summary": (f"{'*' if b.is_current else ''}{b.name}: "
+                            f"{b.last_commit_msg[:60]} "
+                            f"(+{b.ahead_of_main}/-{b.behind_main}, "
+                            f"{b.unpushed} unpushed)"),
+                "raw": {
+                    "branch": b.name,
+                    "is_current": b.is_current,
+                    "author": b.last_commit_author,
+                    "ahead": b.ahead_of_main,
+                    "behind": b.behind_main,
+                    "unpushed": b.unpushed,
+                    "unpulled": b.unpulled,
+                },
+                "project": None,
+            })
+
+    def _handle_claude_event(self, event: ClaudeEvent):
+        """Called by ClaudeMonitor on new Claude Code activity."""
+        if self._cloud_sync:
+            self._cloud_sync.push_claude_event(event)
+        if self.on_claude_event:
+            try:
+                self.on_claude_event(event)
+            except Exception:
+                pass
+
+    def _handle_remote_event(self, event: dict):
+        """Called by CloudSync when another user's event arrives."""
+        if self.on_remote_event:
+            try:
+                self.on_remote_event(event)
+            except Exception:
+                pass
+
+    def _handle_synthesis(self, summary: str):
+        """Called by CloudSync when a new team synthesis is generated."""
+        if self.on_synthesis:
+            try:
+                self.on_synthesis(summary)
             except Exception:
                 pass
 
@@ -265,13 +432,19 @@ class SessionController:
                                   model_name=self.settings.whisper_model,
                                   verbose=verbose)
 
-        # Producer
+        # Producer — wrap callback to also push to cloud
+        def _items_logged_wrapper(items):
+            if self.on_items_logged:
+                self.on_items_logged(items)
+            if self._cloud_sync:
+                self._cloud_sync.push_voice_batch(items)
+
         self._producer = BatchProducer(
             self._stop_event, buffer_lock, transcript_buffer,
             log_path=log_path,
             interval=self.settings.batch_interval,
             verbose=verbose,
-            on_items_logged=self.on_items_logged,
+            on_items_logged=_items_logged_wrapper,
         )
 
         # Start threads
@@ -440,6 +613,8 @@ class SessionController:
             self._focus.check_message(source, sender, text, timestamp)
         if self._blockers:
             self._blockers.check_incoming_message(source, text)
+        if self._cloud_sync:
+            self._cloud_sync.push_message_event(source, sender, text, timestamp)
 
     def _handle_focus_match(self, match):
         """Called by FocusAdvisor when a high-priority match is found."""
@@ -451,6 +626,13 @@ class SessionController:
 
     def _handle_vcs_insight(self, insight: VcsInsight):
         """Called by VcsMonitor when it detects progress/drift/stall."""
+        if self._cloud_sync:
+            self._cloud_sync.push_git_event(
+                event_type=insight.type,
+                summary=insight.summary,
+                files=getattr(insight, "files", []),
+                raw={"details": getattr(insight, "details", "")},
+            )
         if self.on_vcs_insight:
             try:
                 self.on_vcs_insight(insight)

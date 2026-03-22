@@ -8,3 +8,4 @@ triage_analytics.json
 session_log.md
 *.wav
 *.mp3
+.env
