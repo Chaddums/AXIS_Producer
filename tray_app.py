@@ -123,6 +123,14 @@ class TrayApp:
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
+                "Private Mode",
+                self._on_toggle_private,
+                checked=lambda item: (
+                    self.controller._cloud_sync.private_mode
+                    if self.controller._cloud_sync else False
+                ),
+            ),
+            pystray.MenuItem(
                 "Open Dashboard",
                 self._on_open_dashboard,
             ),
@@ -185,6 +193,11 @@ class TrayApp:
 
     def _on_show_blockers(self, icon, item):
         self._tk_queue.put(("blockers",))
+
+    def _on_toggle_private(self, icon, item):
+        sync = self.controller._cloud_sync
+        if sync:
+            sync.private_mode = not sync.private_mode
 
     def _on_open_dashboard(self, icon, item):
         import webbrowser

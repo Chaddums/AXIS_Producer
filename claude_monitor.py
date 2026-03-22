@@ -115,7 +115,8 @@ class ClaudeMonitor:
         self.verbose = verbose
 
         # Which project dirs under ~/.claude/projects/ to watch
-        # None = auto-discover all
+        # Empty list = watch nothing (must explicitly opt in projects)
+        # Use ["*"] to watch all projects
         self._project_filters = project_paths or []
 
         # Track byte offsets per file for tailing
@@ -140,8 +141,11 @@ class ClaudeMonitor:
                 if not os.path.isdir(proj_dir):
                     continue
 
-                # If filters are set, only watch matching projects
-                if self._project_filters:
+                # Only watch explicitly opted-in projects
+                # Use ["*"] to watch all, otherwise must match a filter
+                if not self._project_filters:
+                    continue  # no filters = watch nothing
+                if "*" not in self._project_filters:
                     if not any(f.lower() in entry.lower() for f in self._project_filters):
                         continue
 

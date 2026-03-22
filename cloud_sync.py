@@ -69,11 +69,81 @@ class CloudSync:
         self._db: CloudDB | None = None
         self._last_synthesis: float = 0.0
         self._anthropic: anthropic.Anthropic | None = None
+        self._private_mode: bool = False
+
+    # --- Private mode ---
+
+    @property
+    def private_mode(self) -> bool:
+        return self._private_mode
+
+    @private_mode.setter
+    def private_mode(self, value: bool):
+        self._private_mode = value
+        if self.verbose:
+            state = "ON (events stay local)" if value else "OFF (syncing)"
+            print(f"  [sync] private mode: {state}")
+
+    # --- Content gate ---
+
+    @staticmethod
+    def _is_shareable(event: dict) -> bool:
+        """Filter out personal, social, or venting content before it hits the cloud.
+
+        Returns True if the event should be shared, False if it should stay local.
+        """
+        summary = (event.get("summary") or "").lower()
+        stream = event.get("stream", "")
+        event_type = event.get("event_type", "")
+
+        # Tool actions are always shareable (file edits, reads, commits, etc.)
+        if event_type in ("file_edit", "file_read", "write", "bash_command",
+                          "search", "commit", "branch_status", "unpushed",
+                          "unpulled", "divergence"):
+            return True
+
+        # Presence events are always shareable
+        if stream == "presence":
+            return True
+
+        # For text content (chat, voice, user_message), check for non-work signals
+        # These patterns suggest personal/social/venting — not project work
+        skip_patterns = [
+            "complain", "venting", "rant", "frustrated", "annoyed",
+            "pissed", "hate this", "so tired", "burned out",
+            "drama", "gossip", "personal",
+            # Social chit-chat
+            "what are you up to", "how's it going", "lol", "lmao",
+            "haha", "brb", "gtg",
+        ]
+
+        for pattern in skip_patterns:
+            if pattern in summary:
+                return False
+
+        # Short messages with no actionable content — likely chatter
+        if len(summary) < 10 and event_type in ("user_message", "chat"):
+            # Allow short but actionable things like "yes", "done", "merged"
+            action_words = ["done", "merged", "pushed", "pulled", "fixed",
+                           "shipped", "deployed", "yes", "no", "approved"]
+            if not any(w in summary for w in action_words):
+                return False
+
+        return True
 
     # --- Public: enqueue events (thread-safe) ---
 
     def push_event(self, event: dict):
-        """Enqueue a raw event dict for upload. Non-blocking."""
+        """Enqueue a raw event dict for upload. Non-blocking.
+
+        Events are dropped silently in private mode or if content gate rejects them.
+        """
+        if self._private_mode:
+            return
+        if not self._is_shareable(event):
+            if self.verbose:
+                print(f"  [sync] filtered (not shareable): {event.get('summary', '')[:50]}")
+            return
         self._outbound.put(event)
 
     def push_claude_event(self, ce: ClaudeEvent):
