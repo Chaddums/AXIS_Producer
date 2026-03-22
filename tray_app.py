@@ -144,6 +144,7 @@ class TrayApp:
                 self._on_toggle_verbose,
                 checked=lambda item: self.settings.verbose,
             ),
+            pystray.MenuItem("Restart", self._on_restart),
             pystray.MenuItem("Exit", self._on_exit),
         )
 
@@ -215,6 +216,24 @@ class TrayApp:
     def _on_toggle_verbose(self, icon, item):
         self.settings.verbose = not self.settings.verbose
         self.settings.save()
+
+    def _on_restart(self, icon, item):
+        """Restart the entire AXIS Producer process."""
+        self.controller.stop_briefings()
+        if self.controller.state == State.RECORDING:
+            self.controller.stop_recording()
+        elif self.controller.state == State.DETECTING:
+            self.controller.stop_detecting()
+        self._icon.stop()
+
+        # Re-launch the same entry point in a new process
+        import subprocess
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "launcher.py")
+        subprocess.Popen(
+            [sys.executable, script],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            creationflags=subprocess.CREATE_NEW_CONSOLE,
+        )
 
     def _on_exit(self, icon, item):
         self.controller.stop_briefings()
