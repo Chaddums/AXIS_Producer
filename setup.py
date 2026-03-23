@@ -274,7 +274,7 @@ def step_write_config(name: str, features: dict,
         "user_identity": name,
         "synthesis_interval": 900,
         "claude_monitor": features.get("claude_monitor", True),
-        "claude_project_paths": [],
+        "claude_project_paths": ["*"],  # watch all CC projects (narrow later if needed)
         "claude_poll_interval": 3.0,
         "notification_level": "info",
         "aggressive_alerts": False,

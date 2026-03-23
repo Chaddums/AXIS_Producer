@@ -642,18 +642,52 @@ function renderConflicts() {
   const cutoff = now - 7200000;
   const recent = allEvents.filter(e => new Date(e.ts).getTime() > cutoff);
 
-  // File overlap detection
+  // File overlap detection — exact file AND same directory (neighbor files)
   const filesByWho = {};
+  const dirsByWho = {};
   for (const e of recent) {
     for (const f of (e.files || [])) {
       const name = shortFile(f);
+      const dir = f.replace(/\\/g, '/').split('/').slice(-2, -1)[0] || '';
+      // Track exact files
       if (!filesByWho[name]) filesByWho[name] = new Set();
       filesByWho[name].add((e.who || '').toLowerCase());
+      // Track directories with which files each person touched
+      if (dir) {
+        const key = dir;
+        if (!dirsByWho[key]) dirsByWho[key] = {};
+        const who = (e.who || '').toLowerCase();
+        if (!dirsByWho[key][who]) dirsByWho[key][who] = new Set();
+        dirsByWho[key][who].add(name);
+      }
     }
   }
   const conflicts = [];
+  // Exact file conflicts
   for (const [file, people] of Object.entries(filesByWho)) {
-    if (people.size > 1) conflicts.push({ file, people: [...people] });
+    if (people.size > 1) conflicts.push({ file, people: [...people], type: 'same_file' });
+  }
+  // Neighbor file conflicts (same directory, different files, different people)
+  for (const [dir, whoFiles] of Object.entries(dirsByWho)) {
+    const people = Object.keys(whoFiles);
+    if (people.length > 1) {
+      // Check they're touching DIFFERENT files in the same dir (not already caught above)
+      const allFiles = new Set();
+      for (const who of people) {
+        for (const f of whoFiles[who]) allFiles.add(f);
+      }
+      // Only flag if there are files unique to each person (they're working in the same area)
+      const unique = people.some(p => [...whoFiles[p]].some(f => {
+        return !people.every(p2 => p2 === p || whoFiles[p2].has(f));
+      }));
+      if (unique) {
+        const fileList = [...allFiles].slice(0, 4).join(', ');
+        const alreadyCaught = conflicts.some(c => c.type === 'same_file' && allFiles.has(c.file));
+        if (!alreadyCaught) {
+          conflicts.push({ file: `${dir}/ (${fileList})`, people, type: 'neighbor' });
+        }
+      }
+    }
   }
 
   // Blockers
@@ -679,9 +713,12 @@ function renderConflicts() {
   }
 
   for (const c of conflicts) {
-    html += `<div class="conflict">
-      <div class="conflict-title">File Overlap</div>
-      <div class="conflict-detail"><strong>${escapeHtml(c.file)}</strong> touched by ${c.people.join(' + ')}</div>
+    const isSameFile = c.type === 'same_file';
+    const title = isSameFile ? '\u26a0 Same File Conflict' : '\u26a1 Same Area — Neighbor Files';
+    const border = isSameFile ? 'border-color:#dc2626;' : 'border-color:#d97706;';
+    html += `<div class="conflict" style="${border}">
+      <div class="conflict-title">${title}</div>
+      <div class="conflict-detail"><strong>${escapeHtml(c.file)}</strong> — ${c.people.join(' + ')}</div>
     </div>`;
   }
 
