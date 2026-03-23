@@ -1145,6 +1145,22 @@ async function init() {
   // Start presence heartbeat
   sendPresence();
   setInterval(sendPresence, PRESENCE_MS);
+
+  // Auto-reload when dashboard code changes
+  let dashboardVersion = null;
+  setInterval(async () => {
+    try {
+      const resp = await fetch('/api/version');
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (dashboardVersion === null) {
+        dashboardVersion = data.version;
+      } else if (data.version !== dashboardVersion) {
+        console.log('Dashboard updated, reloading...');
+        location.reload();
+      }
+    } catch {}
+  }, 10000); // check every 10 seconds
 }
 
 init();

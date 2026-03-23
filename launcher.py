@@ -64,6 +64,23 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    def do_GET(self):
+        path = urlparse(self.path).path
+        if path == "/api/version":
+            # Return hash of dashboard.html so clients can detect changes
+            import hashlib
+            dashboard_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "dashboard.html")
+            try:
+                with open(dashboard_path, "rb") as f:
+                    h = hashlib.md5(f.read()).hexdigest()[:12]
+                self._json_response({"version": h})
+            except Exception:
+                self._json_response({"version": "unknown"})
+            return
+        # Fall through to static file serving
+        super().do_GET()
+
     def do_POST(self):
         path = urlparse(self.path).path
 
