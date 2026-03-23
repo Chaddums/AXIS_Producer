@@ -362,16 +362,47 @@ def main():
         server.shutdown()
         return
 
-    # Start tray app (blocks on main thread)
-    try:
-        from tray_app import TrayApp
-        app = TrayApp()
-        app.run()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        server.shutdown()
-        print("  AXIS Producer stopped.")
+    # Start tray app (blocks on main thread) with crash recovery
+    log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "axis_crash.log")
+    max_restarts = 3
+    restart_count = 0
+
+    while restart_count <= max_restarts:
+        try:
+            from tray_app import TrayApp
+            app = TrayApp()
+            app.run()
+            break  # clean exit
+        except KeyboardInterrupt:
+            break
+        except Exception as e:
+            restart_count += 1
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            crash_msg = f"[{timestamp}] CRASH #{restart_count}: {type(e).__name__}: {e}\n"
+
+            # Log to file
+            try:
+                import traceback
+                with open(log_file, "a", encoding="utf-8") as f:
+                    f.write(crash_msg)
+                    traceback.print_exc(file=f)
+                    f.write("\n")
+            except Exception:
+                pass
+
+            print(f"\n  AXIS Producer crashed: {e}")
+
+            if restart_count <= max_restarts:
+                wait = restart_count * 5
+                print(f"  Restarting in {wait}s... (attempt {restart_count}/{max_restarts})")
+                print(f"  Crash log: {log_file}")
+                time.sleep(wait)
+            else:
+                print(f"  Too many crashes. Check {log_file}")
+                break
+
+    server.shutdown()
+    print("  AXIS Producer stopped.")
 
 
 if __name__ == "__main__":
