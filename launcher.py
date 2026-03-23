@@ -161,6 +161,100 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         pass
 
 
+def check_for_updates() -> bool:
+    """Check if remote has new commits, auto-pull if so. Returns True if updated."""
+    project_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        subprocess.run(
+            ["git", "fetch", "--quiet"],
+            cwd=project_dir, capture_output=True, timeout=15,
+        )
+        result = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD..@{upstream}"],
+            cwd=project_dir, capture_output=True, text=True, timeout=10,
+        )
+        behind = int(result.stdout.strip()) if result.stdout.strip() else 0
+
+        if behind > 0:
+            # Show what's coming
+            log_result = subprocess.run(
+                ["git", "log", "--oneline", "HEAD..@{upstream}", "--max-count=5"],
+                cwd=project_dir, capture_output=True, text=True, timeout=10,
+            )
+            commits = log_result.stdout.strip()
+            print(f"  Update available: {behind} new commit(s)")
+            if commits:
+                for line in commits.split("\n"):
+                    print(f"    {line}")
+
+            # Pull
+            pull = subprocess.run(
+                ["git", "pull", "--ff-only"],
+                cwd=project_dir, capture_output=True, text=True, timeout=30,
+            )
+            if pull.returncode == 0:
+                print("  Updated successfully.")
+                return True
+            else:
+                print(f"  Auto-pull failed: {pull.stderr.strip()}")
+                print("  You may need to pull manually.")
+                return False
+        return False
+    except Exception as e:
+        # Non-fatal — just can't check for updates
+        return False
+
+
+def start_update_checker(interval: float = 300.0):
+    """Background thread that checks for updates periodically."""
+    project_dir = os.path.dirname(os.path.abspath(__file__))
+
+    def _check_loop():
+        while True:
+            time.sleep(interval)
+            try:
+                subprocess.run(
+                    ["git", "fetch", "--quiet"],
+                    cwd=project_dir, capture_output=True, timeout=15,
+                )
+                result = subprocess.run(
+                    ["git", "rev-list", "--count", "HEAD..@{upstream}"],
+                    cwd=project_dir, capture_output=True, text=True, timeout=10,
+                )
+                behind = int(result.stdout.strip()) if result.stdout.strip() else 0
+
+                if behind > 0:
+                    log_result = subprocess.run(
+                        ["git", "log", "--oneline", "HEAD..@{upstream}",
+                         "--max-count=3"],
+                        cwd=project_dir, capture_output=True, text=True,
+                        timeout=10,
+                    )
+                    commits = log_result.stdout.strip()
+                    print(f"\n  [updater] {behind} update(s) available:")
+                    if commits:
+                        for line in commits.split("\n"):
+                            print(f"    {line}")
+
+                    # Auto-pull
+                    pull = subprocess.run(
+                        ["git", "pull", "--ff-only"],
+                        cwd=project_dir, capture_output=True, text=True,
+                        timeout=30,
+                    )
+                    if pull.returncode == 0:
+                        print("  [updater] Updated. Restart to apply changes.")
+                        # Could auto-restart here, but safer to notify
+                    else:
+                        print(f"  [updater] Pull failed: {pull.stderr.strip()}")
+            except Exception:
+                pass
+
+    t = threading.Thread(target=_check_loop, name="update-checker", daemon=True)
+    t.start()
+    return t
+
+
 def start_http_server(port: int = 8080, whisper_model: str = "base.en"):
     """Start the dashboard HTTP server in a background thread."""
     project_dir = os.path.dirname(os.path.abspath(__file__))
@@ -218,6 +312,15 @@ def main():
     print()
     print("  AXIS Producer starting...")
     print()
+
+    # Check for updates on startup
+    updated = check_for_updates()
+    if updated:
+        print("  Code updated — restarting...")
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    # Check for updates every 5 minutes in background
+    start_update_checker(interval=300.0)
 
     # Start HTTP server
     server, port = start_http_server(
