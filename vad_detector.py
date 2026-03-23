@@ -15,8 +15,10 @@ import webrtcvad
 
 from capture import SAMPLE_RATE, FRAME_DURATION_MS, FRAME_SIZE, CALIBRATION_SEC, NOISE_GATE_HEADROOM
 
-VOICED_FRAMES_THRESHOLD = 10   # 300ms of speech to trigger
-COOLDOWN_SEC = 30.0            # no re-trigger for 30s
+VOICED_FRAMES_THRESHOLD = 30   # ~1 second of sustained speech to trigger
+COOLDOWN_SEC = 60.0            # minimum 60s between triggers
+SUSTAINED_WINDOW = 100         # frames window to check (~3 seconds)
+SUSTAINED_RATIO = 0.5          # at least 50% of window must be voiced
 
 
 class VadDetector:
@@ -32,8 +34,11 @@ class VadDetector:
         self._noise_gate_rms = 0
         self._voiced_count = 0
         self._last_trigger = 0.0
+        self._decline_count = 0       # how many times user said "no"
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        # Sliding window for sustained speech detection
+        self._frame_history: list[bool] = []
 
     def _audio_callback(self, indata: np.ndarray, frames: int,
                         time_info, status):
@@ -65,18 +70,52 @@ class VadDetector:
         else:
             is_speech = self.vad.is_speech(frame_bytes, SAMPLE_RATE)
 
-        if is_speech:
-            self._voiced_count += 1
-            if self._voiced_count >= VOICED_FRAMES_THRESHOLD:
-                now = time.time()
-                if now - self._last_trigger > COOLDOWN_SEC:
-                    self._last_trigger = now
-                    self._voiced_count = 0
-                    if self.verbose:
-                        print("  [vad] speech detected -- triggering callback")
-                    self.on_speech_detected()
+        # Sliding window: track last N frames
+        self._frame_history.append(is_speech)
+        if len(self._frame_history) > SUSTAINED_WINDOW:
+            self._frame_history.pop(0)
+
+        # Need enough history and sustained speech ratio
+        if len(self._frame_history) < VOICED_FRAMES_THRESHOLD:
+            return
+
+        voiced_in_window = sum(self._frame_history)
+
+        # Check: enough total voiced frames AND sustained ratio in window
+        if (voiced_in_window >= VOICED_FRAMES_THRESHOLD
+                and voiced_in_window / len(self._frame_history) >= SUSTAINED_RATIO):
+            now = time.time()
+            # Cooldown escalates with each decline: 60s, 5m, 15m, 30m
+            cooldown = self._effective_cooldown()
+            if now - self._last_trigger > cooldown:
+                self._last_trigger = now
+                self._frame_history.clear()
+                if self.verbose:
+                    print(f"  [vad] sustained speech detected (~{voiced_in_window} voiced frames) -- triggering")
+                self.on_speech_detected()
+
+    def _effective_cooldown(self) -> float:
+        """Cooldown escalates each time the user declines the prompt."""
+        if self._decline_count == 0:
+            return COOLDOWN_SEC          # 60s
+        elif self._decline_count == 1:
+            return 300.0                 # 5 min
+        elif self._decline_count == 2:
+            return 900.0                 # 15 min
         else:
-            self._voiced_count = 0
+            return 1800.0                # 30 min
+
+    def on_declined(self):
+        """Call this when the user declines the recording prompt."""
+        self._decline_count += 1
+        self._last_trigger = time.time()
+        if self.verbose:
+            cd = self._effective_cooldown()
+            print(f"  [vad] declined ({self._decline_count}x) — next prompt in {cd/60:.0f}m")
+
+    def on_accepted(self):
+        """Call this when the user accepts — reset decline counter."""
+        self._decline_count = 0
 
     def _calibrate_noise_floor(self, native_rate, blocksize):
         """Record ambient noise to set the noise gate threshold."""

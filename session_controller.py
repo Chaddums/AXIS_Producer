@@ -378,13 +378,14 @@ class SessionController:
                 return
 
         if accepted:
+            if self._detector:
+                self._detector.on_accepted()
             self.start_recording()
         else:
-            # Resume detecting
+            # Resume detecting with escalating cooldown
             self._set_state(State.DETECTING)
             if self._detector:
-                # Reset cooldown so we don't immediately re-trigger
-                self._detector._last_trigger = time.time()
+                self._detector.on_declined()
 
     # ----- Recording phase -----
 
