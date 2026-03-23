@@ -811,9 +811,10 @@ function renderFeed(newEvents) {
       }
     }
   } else if (panel.children.length === 0 && allEvents.length > 0) {
-    // Initial full render
-    const critical = allEvents.filter(e => classifyPriority(e) === 'critical');
-    const rest = allEvents.filter(e => classifyPriority(e) !== 'critical');
+    // Initial full render — only top-level events (no thread replies)
+    const topOnly = allEvents.filter(e => !e.parent_id);
+    const critical = topOnly.filter(e => classifyPriority(e) === 'critical');
+    const rest = topOnly.filter(e => classifyPriority(e) !== 'critical');
 
     let html = '';
     if (critical.length) {
@@ -1069,9 +1070,30 @@ async function poll() {
       // Filter out presence for feed rendering
       const feedEvents = reversed.filter(e => e.stream !== 'presence' && e.event_type !== 'presence');
 
+      // Separate thread replies from top-level events
+      const topLevel = feedEvents.filter(e => !e.parent_id);
+      const threadReplies = feedEvents.filter(e => e.parent_id);
+
       updatePresenceFromEvents();
 
-      if (feedEvents.length) renderFeed(feedEvents);
+      if (topLevel.length) renderFeed(topLevel);
+
+      // Append thread replies to their parent's thread container if it's open
+      for (const reply of threadReplies) {
+        const container = document.getElementById(`thread-${reply.parent_id}`);
+        if (container && container.style.display !== 'none' && container.children.length > 0) {
+          // Find the thread content area (before the input row)
+          const inputRow = container.querySelector('.thread-input-row');
+          if (inputRow) {
+            const replyHtml = `<div class="event new" style="padding-left:24px;">
+              <span class="event-time">${timeStr(reply.ts)}</span>
+              <span class="event-who ${whoColor(reply.who)}">${escapeHtml(reply.who)}</span>
+              <div class="event-body"><div class="event-summary">${escapeHtml(reply.summary || '')}</div></div>
+            </div>`;
+            inputRow.insertAdjacentHTML('beforebegin', replyHtml);
+          }
+        }
+      }
       renderPeople();
       renderConflicts();
       renderBranches();
