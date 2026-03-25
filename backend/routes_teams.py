@@ -85,3 +85,38 @@ async def list_members(team_id: str, user: dict = Depends(auth.get_current_user)
         raise HTTPException(status_code=403, detail="Not a member of this team")
 
     return db.get_team_members(team_id)
+
+
+class TeamConfigRequest(BaseModel):
+    workspace_type: str | None = None
+    workspace_context: str | None = None
+    output_terminology: dict | None = None
+    privacy_preset: str | None = None
+
+
+@router.put("/{team_id}/config")
+async def update_team_config(
+    team_id: str,
+    req: TeamConfigRequest,
+    user: dict = Depends(auth.get_current_user),
+):
+    if team_id not in user.get("teams", []):
+        raise HTTPException(status_code=403, detail="Not a member of this team")
+
+    # Only owner/admin can change config
+    members = db.get_team_members(team_id)
+    user_member = next(
+        (m for m in members if m.get("user_id") == user["sub"]), None
+    )
+    if not user_member or user_member.get("role") not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Only team owner or admin can change config")
+
+    updated = db.update_team_config(
+        team_id,
+        workspace_type=req.workspace_type,
+        workspace_context=req.workspace_context,
+        output_terminology=req.output_terminology,
+        privacy_preset=req.privacy_preset,
+    )
+
+    return updated or {"ok": True}

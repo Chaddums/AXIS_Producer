@@ -55,3 +55,19 @@ async def require_team(team_id: str, user: dict = Depends(get_current_user)) -> 
     if team_id not in user.get("teams", []):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a member of this team")
     return user
+
+
+def require_active_subscription(team_id: str):
+    """Check that a team has an active or trialing subscription. Raises 402 if not."""
+    import db
+    sub = db.get_subscription_by_team(team_id)
+    if not sub:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="No active subscription. Please subscribe to continue.",
+        )
+    if sub["status"] not in ("active", "trialing"):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=f"Subscription is {sub['status']}. Please update your billing.",
+        )

@@ -22,10 +22,19 @@ class EventIn(BaseModel):
     project: str | None = None
 
 
+class SynthesisIn(BaseModel):
+    team_id: str
+    content: str
+    window_start: str
+    window_end: str
+
+
 @router.post("")
 async def push_event(event: EventIn, user: dict = Depends(auth.get_current_user)):
     if event.team_id not in user.get("teams", []):
         raise HTTPException(status_code=403, detail="Not a member of this team")
+
+    auth.require_active_subscription(event.team_id)
 
     res = db.client().table("events").insert({
         "team_id": event.team_id,
@@ -43,10 +52,46 @@ async def push_event(event: EventIn, user: dict = Depends(auth.get_current_user)
     return {"ok": True, "id": res.data[0]["id"] if res.data else None}
 
 
+@router.post("/batch")
+async def push_events_batch(
+    events: list[EventIn],
+    user: dict = Depends(auth.get_current_user),
+):
+    """Insert multiple events at once."""
+    if not events:
+        return {"ok": True, "count": 0}
+
+    # Verify team membership for all events
+    team_ids = {e.team_id for e in events}
+    user_teams = set(user.get("teams", []))
+    if not team_ids.issubset(user_teams):
+        raise HTTPException(status_code=403, detail="Not a member of one or more teams")
+
+    for tid in team_ids:
+        auth.require_active_subscription(tid)
+
+    rows = [{
+        "team_id": e.team_id,
+        "session_id": e.session_id,
+        "stream": e.stream,
+        "event_type": e.event_type,
+        "who": e.who,
+        "area": e.area,
+        "files": e.files,
+        "summary": e.summary,
+        "raw": e.raw,
+        "project": e.project,
+    } for e in events]
+
+    res = db.client().table("events").insert(rows).execute()
+    return {"ok": True, "count": len(res.data) if res.data else 0}
+
+
 @router.get("")
 async def pull_events(
     team_id: str = Query(...),
     since: str = Query(None, description="ISO timestamp, return events after this"),
+    since_id: str = Query(None, description="Return events with id > this value"),
     limit: int = Query(100, le=500),
     user: dict = Depends(auth.get_current_user),
 ):
@@ -54,9 +99,36 @@ async def pull_events(
         raise HTTPException(status_code=403, detail="Not a member of this team")
 
     q = db.client().table("events").select("*").eq("team_id", team_id)
-    if since:
+    if since_id:
+        q = q.gt("id", since_id)
+    elif since:
         q = q.gt("ts", since)
     q = q.order("ts", desc=False).limit(limit)
 
     res = q.execute()
     return res.data or []
+
+
+@router.post("/synthesis")
+async def push_synthesis(syn: SynthesisIn, user: dict = Depends(auth.get_current_user)):
+    if syn.team_id not in user.get("teams", []):
+        raise HTTPException(status_code=403, detail="Not a member of this team")
+
+    result = db.insert_synthesis(
+        syn.team_id, syn.content, syn.window_start, syn.window_end
+    )
+    return {"ok": True, "id": result["id"] if result else None}
+
+
+@router.get("/synthesis/latest")
+async def get_latest_synthesis(
+    team_id: str = Query(...),
+    user: dict = Depends(auth.get_current_user),
+):
+    if team_id not in user.get("teams", []):
+        raise HTTPException(status_code=403, detail="Not a member of this team")
+
+    result = db.get_latest_synthesis(team_id)
+    if not result:
+        return {"synthesis": None}
+    return result

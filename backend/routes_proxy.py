@@ -58,6 +58,7 @@ async def anthropic_batch(req: BatchRequest, user: dict = Depends(auth.get_curre
     if req.team_id not in user.get("teams", []):
         raise HTTPException(status_code=403, detail="Not a member of this team")
 
+    auth.require_active_subscription(req.team_id)
     _check_budget(req.team_id)
 
     resp = await _http.post(
@@ -108,6 +109,7 @@ async def groq_transcribe(request: Request, user: dict = Depends(auth.get_curren
     if team_id not in user.get("teams", []):
         raise HTTPException(status_code=403, detail="Not a member of this team")
 
+    auth.require_active_subscription(team_id)
     _check_budget(team_id)
 
     # Forward to Groq
