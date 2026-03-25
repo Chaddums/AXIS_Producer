@@ -348,6 +348,28 @@
   @media (max-width: 900px) {
     .row-split { grid-template-columns: 1fr; }
   }
+
+  /* Phone QR Modal */
+  .modal-overlay {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7); z-index: 1000;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: #111827; border: 1px solid #334155; border-radius: 8px;
+    padding: 24px; text-align: center; max-width: 360px; width: 90%;
+  }
+  .modal h2 { font-size: 16px; color: #4ac0ff; margin-bottom: 16px; }
+  .modal img { max-width: 240px; margin: 0 auto 16px; display: block; border-radius: 4px; }
+  .modal .url-text { font-size: 10px; color: #64748b; word-break: break-all; margin-bottom: 16px; }
+  .modal .pair-status { font-size: 13px; margin-bottom: 12px; }
+  .modal .pair-status.paired { color: #34d399; }
+  .modal .close-btn {
+    background: #1e293b; border: 1px solid #334155; color: #c8d0e0;
+    padding: 6px 16px; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 12px;
+  }
+  .modal .close-btn:hover { background: #334155; }
 </style>
 </head>
 <body>
@@ -357,6 +379,7 @@
   <h1>AXIS Producer</h1>
   <span id="conn-status" class="status">connecting...</span>
   <div class="spacer"></div>
+  <button id="phone-mic-btn" class="header-btn" onclick="showPhoneQR()" title="Connect phone as mic">Phone Mic</button>
   <button id="sound-toggle" class="header-btn" title="Toggle alert sounds">Sound: OFF</button>
   <span class="header-label">User:</span>
   <input id="user-input" class="header-input" type="text" placeholder="your name" spellcheck="false">
@@ -1202,5 +1225,67 @@ async function init() {
 
 init();
 </script>
+
+<!-- Phone QR Modal -->
+<div class="modal-overlay" id="phone-modal" onclick="if(event.target===this)closePhoneQR()">
+  <div class="modal">
+    <h2>Connect Phone as Mic</h2>
+    <img id="phone-qr-img" alt="QR Code" src="">
+    <div class="url-text" id="phone-url"></div>
+    <div class="pair-status" id="phone-pair-status">Scan QR code with your phone</div>
+    <button class="close-btn" onclick="closePhoneQR()">Close</button>
+  </div>
+</div>
+
+<script>
+let _phoneQRPoll = null;
+
+async function showPhoneQR() {
+  const modal = document.getElementById('phone-modal');
+  modal.classList.add('active');
+
+  try {
+    const r = await fetch('/api/phone-qr');
+    const data = await r.json();
+    if (data.error) {
+      document.getElementById('phone-pair-status').textContent = data.error;
+      return;
+    }
+    document.getElementById('phone-qr-img').src = data.qr_base64;
+    document.getElementById('phone-url').textContent = data.url;
+    updatePairStatus(data.paired);
+  } catch(e) {
+    document.getElementById('phone-pair-status').textContent = 'Could not reach server';
+  }
+
+  _phoneQRPoll = setInterval(async () => {
+    try {
+      const r = await fetch('/api/phone-status');
+      const s = await r.json();
+      updatePairStatus(s.paired);
+    } catch {}
+  }, 2000);
+}
+
+function updatePairStatus(paired) {
+  const el = document.getElementById('phone-pair-status');
+  const btn = document.getElementById('phone-mic-btn');
+  if (paired) {
+    el.textContent = 'Phone connected';
+    el.classList.add('paired');
+    btn.classList.add('active');
+  } else {
+    el.textContent = 'Scan QR code with your phone';
+    el.classList.remove('paired');
+    btn.classList.remove('active');
+  }
+}
+
+function closePhoneQR() {
+  document.getElementById('phone-modal').classList.remove('active');
+  if (_phoneQRPoll) { clearInterval(_phoneQRPoll); _phoneQRPoll = null; }
+}
+</script>
+
 </body>
 </html>

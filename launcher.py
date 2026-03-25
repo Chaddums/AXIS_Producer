@@ -64,10 +64,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    _phone_mic = None  # class-level, set by launcher
+
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/api/version":
-            # Return hash of dashboard.html so clients can detect changes
             import hashlib
             dashboard_path = os.path.join(
                 os.path.dirname(os.path.abspath(__file__)), "dashboard.html")
@@ -77,6 +78,21 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 self._json_response({"version": h})
             except Exception:
                 self._json_response({"version": "unknown"})
+            return
+        elif path == "/api/phone-qr":
+            if self._phone_mic:
+                self._json_response(self._phone_mic.get_status())
+            else:
+                self._json_response({"error": "Phone mic not available"}, 503)
+            return
+        elif path == "/api/phone-status":
+            if self._phone_mic:
+                self._json_response({
+                    "paired": self._phone_mic.is_paired,
+                    "streaming": self._phone_mic.is_streaming,
+                })
+            else:
+                self._json_response({"paired": False, "streaming": False})
             return
         # Fall through to static file serving
         super().do_GET()
@@ -272,19 +288,24 @@ def start_update_checker(interval: float = 300.0):
     return t
 
 
-def start_http_server(port: int = 8080, whisper_model: str = "base.en"):
-    """Start the dashboard HTTP server in a background thread."""
+def start_http_server(port: int = 8080, whisper_model: str = "base.en",
+                      https_port: int = 8443):
+    """Start the dashboard HTTP server in a background thread.
+
+    Serves on 0.0.0.0 so phones on the LAN can reach phone_mic.html.
+    Also starts an HTTPS server on https_port for getUserMedia on mobile.
+    """
     project_dir = os.path.dirname(os.path.abspath(__file__))
     os.chdir(project_dir)
 
     DashboardHandler.whisper_model = whisper_model
 
     try:
-        server = HTTPServer(("127.0.0.1", port), DashboardHandler)
+        server = HTTPServer(("0.0.0.0", port), DashboardHandler)
     except OSError as e:
         if "Address already in use" in str(e) or "10048" in str(e):
             print(f"  Dashboard server: port {port} in use, trying {port + 1}")
-            server = HTTPServer(("127.0.0.1", port + 1), DashboardHandler)
+            server = HTTPServer(("0.0.0.0", port + 1), DashboardHandler)
             port = port + 1
         else:
             raise
@@ -292,8 +313,32 @@ def start_http_server(port: int = 8080, whisper_model: str = "base.en"):
     thread = threading.Thread(target=server.serve_forever,
                               name="dashboard-http", daemon=True)
     thread.start()
-
     print(f"  Dashboard: http://localhost:{port}/dashboard.html")
+
+    # HTTPS server for phone mic (getUserMedia requires secure context)
+    https_server = None
+    try:
+        from phone_mic_server import generate_self_signed_cert
+        cert_path = os.path.join(project_dir, "phone_mic_cert.pem")
+        key_path = os.path.join(project_dir, "phone_mic_key.pem")
+        if not os.path.exists(cert_path) or not os.path.exists(key_path):
+            generate_self_signed_cert(cert_path, key_path)
+
+        import ssl
+        https_server = HTTPServer(("0.0.0.0", https_port), DashboardHandler)
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(cert_path, key_path)
+        https_server.socket = ctx.wrap_socket(https_server.socket, server_side=True)
+
+        https_thread = threading.Thread(target=https_server.serve_forever,
+                                        name="dashboard-https", daemon=True)
+        https_thread.start()
+        from phone_mic_server import get_local_ip
+        local_ip = get_local_ip()
+        print(f"  Phone HTTPS: https://{local_ip}:{https_port}/phone_mic.html")
+    except Exception as e:
+        print(f"  HTTPS server failed: {e} (phone mic will not work)")
+
     return server, port
 
 
@@ -338,6 +383,21 @@ def main():
 
     # Check for updates every 5 minutes in background
     start_update_checker(interval=300.0)
+
+    # Start phone mic server (WebSocket for phone-as-mic pairing)
+    try:
+        from phone_mic_server import PhoneMicServer
+        _phone_stop = threading.Event()
+        phone_mic = PhoneMicServer(
+            chunk_queue=None,  # will be set when recording starts
+            stop_event=_phone_stop,
+            verbose=settings.verbose,
+        )
+        phone_mic.start()
+        DashboardHandler._phone_mic = phone_mic
+    except Exception as e:
+        print(f"  Phone mic server failed: {e}")
+        phone_mic = None
 
     # Start HTTP server
     server, port = start_http_server(

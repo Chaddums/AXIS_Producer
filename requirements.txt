@@ -8,3 +8,6 @@ Pillow>=9.0.0             # icon generation for tray app
 pywin32>=306              # Outlook COM access for email_monitor.py (Windows only)
 supabase>=2.0.0           # cloud sync for shared event store (cloud_db.py)
 python-telegram-bot>=21.0 # standalone team awareness bot (team_bot.py)
+websockets>=12.0          # phone-as-mic WebSocket server (phone_mic_server.py)
+qrcode[pil]>=7.4          # QR code generation for phone pairing
+cryptography>=42.0        # self-signed cert for HTTPS on local network

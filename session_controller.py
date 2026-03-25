@@ -31,6 +31,7 @@ from vad_detector import VadDetector
 from claude_monitor import ClaudeMonitor, ClaudeEvent
 from cloud_sync import CloudSync
 from git_health import GitHealthMonitor, GitHealthAlert, BranchInfo
+from phone_mic_server import PhoneMicServer
 from settings import Settings
 
 
@@ -446,7 +447,14 @@ class SessionController:
             interval=self.settings.batch_interval,
             verbose=verbose,
             on_items_logged=_items_logged_wrapper,
+            workspace_context=self.settings.workspace_context,
+            output_terminology=self.settings.output_terminology,
         )
+
+        # Phone mic (WebSocket, shares chunk_queue with local mic)
+        self._phone_mic = PhoneMicServer(
+            chunk_queue, self._stop_event, verbose=verbose)
+        self._phone_mic.start()
 
         # Start threads
         self._threads = [
@@ -577,6 +585,11 @@ class SessionController:
         for t in self._threads:
             t.join(timeout=5.0)
         self._threads.clear()
+
+        # Stop phone mic server
+        if hasattr(self, '_phone_mic') and self._phone_mic:
+            self._phone_mic.stop()
+            self._phone_mic = None
 
         # Capture batch count
         if self._producer:
