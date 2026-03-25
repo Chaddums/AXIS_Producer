@@ -16,9 +16,9 @@ import sys
 SETTINGS_PATH = os.path.join(os.path.dirname(__file__), "tray_settings.json")
 ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
 
-# Pre-configured Supabase (shared team DB)
-SUPABASE_URL = "https://vktcojdvracuzwzeqisw.supabase.co"
-SUPABASE_KEY = "sb_publishable_NAeW_rDUSS-oiM03p2JD5Q_IWWKPAmK"
+# Supabase credentials — loaded from env, never hardcoded
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
 
 def banner():

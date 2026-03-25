@@ -6,6 +6,13 @@ from dataclasses import dataclass, field, asdict
 
 SETTINGS_PATH = os.path.join(os.path.dirname(__file__), "tray_settings.json")
 
+WORKSPACE_PRESETS = {
+    "dev_team":      {"slack_monitor": True,  "vcs_monitor": True,  "calendar_monitor": True, "email_monitor": True,  "claude_monitor": True,  "privacy_preset": "standard"},
+    "business_team": {"slack_monitor": True,  "vcs_monitor": False, "calendar_monitor": True, "email_monitor": True,  "claude_monitor": False, "privacy_preset": "standard"},
+    "healthcare":    {"slack_monitor": False, "vcs_monitor": False, "calendar_monitor": True, "email_monitor": True,  "claude_monitor": False, "privacy_preset": "hipaa_aware"},
+    "agency":        {"slack_monitor": True,  "vcs_monitor": False, "calendar_monitor": True, "email_monitor": True,  "claude_monitor": False, "privacy_preset": "standard"},
+}
+
 
 @dataclass
 class Settings:
@@ -49,11 +56,29 @@ class Settings:
     dashboard_port: int = 8080            # localhost port for dashboard
     verbose: bool = False
 
+    # Workspace type system
+    workspace_type: str = "custom"        # dev_team | business_team | healthcare | agency | custom
+    workspace_context: str = ""           # free text injected into Claude system prompt
+    output_terminology: dict = None       # label overrides, e.g. {"Blockers": "Waiting on"}
+    privacy_preset: str = "standard"      # standard | strict | hipaa_aware
+
     def __post_init__(self):
         if self.slack_channel_ids is None:
             self.slack_channel_ids = []
         if self.claude_project_paths is None:
             self.claude_project_paths = []
+        if self.output_terminology is None:
+            self.output_terminology = {}
+
+    def apply_workspace_preset(self, workspace_type: str):
+        """Apply a workspace preset, setting monitor flags and privacy level."""
+        preset = WORKSPACE_PRESETS.get(workspace_type)
+        if not preset:
+            return
+        self.workspace_type = workspace_type
+        for key, value in preset.items():
+            setattr(self, key, value)
+        self.save()
 
     @property
     def log_path(self) -> str:

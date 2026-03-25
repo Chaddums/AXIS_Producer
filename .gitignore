@@ -9,6 +9,9 @@ session_log.md
 *.wav
 *.mp3
 .env
+backend/.env
 axis_crash.log
+phone_mic_cert.pem
+phone_mic_key.pem
 .team_bot_users.json
 dashboard2.html

@@ -53,6 +53,8 @@ Rules:
 - Ignore only filler and repetition, NOT topic changes. If they're talking about it, log it.
 - If the transcript is genuinely unintelligible, output: [nothing to report]"""
 
+AI_DISCLAIMER = "\n\n> *AI-generated summary. Not a verbatim transcript. Not a legal record. Verify important decisions independently.*"
+
 
 class BatchProducer:
     """Periodically batches the transcript buffer, sends to Claude,
@@ -61,7 +63,9 @@ class BatchProducer:
     def __init__(self, stop_event: threading.Event,
                  buffer_lock: threading.Lock, transcript_buffer: list[str],
                  log_path: str, interval: int = BATCH_INTERVAL_SEC,
-                 verbose: bool = False, on_items_logged=None):
+                 verbose: bool = False, on_items_logged=None,
+                 workspace_context: str = "",
+                 output_terminology: dict | None = None):
         self.stop_event = stop_event
         self.buffer_lock = buffer_lock
         self.transcript_buffer = transcript_buffer
@@ -69,6 +73,12 @@ class BatchProducer:
         self.interval = interval
         self.verbose = verbose
         self.on_items_logged = on_items_logged  # callback(list[tuple[str, str]]) — (category, text)
+        self.output_terminology = output_terminology or {}
+
+        # Build system prompt with optional workspace context
+        self._system_prompt = SYSTEM_PROMPT
+        if workspace_context:
+            self._system_prompt += f"\n\nContext: {workspace_context}"
 
         self.force_batch = threading.Event()
         self._batch_count = 0
@@ -114,10 +124,10 @@ class BatchProducer:
             response = self._client.messages.create(
                 model=MODEL,
                 max_tokens=MAX_TOKENS,
-                system=SYSTEM_PROMPT,
+                system=self._system_prompt,
                 messages=[{"role": "user", "content": transcript}],
             )
-            notes = response.content[0].text
+            notes = self._apply_terminology(response.content[0].text)
         except Exception as e:
             print(f"  [startup] Claude API error: {e}")
             with self.buffer_lock:
@@ -163,10 +173,10 @@ class BatchProducer:
             response = self._client.messages.create(
                 model=MODEL,
                 max_tokens=MAX_TOKENS,
-                system=SYSTEM_PROMPT,
+                system=self._system_prompt,
                 messages=[{"role": "user", "content": transcript}],
             )
-            notes = response.content[0].text
+            notes = self._apply_terminology(response.content[0].text)
         except Exception as e:
             print(f"  [producer] Claude API error: {e}")
             # Keep the transcript for next batch
@@ -202,6 +212,12 @@ class BatchProducer:
                 items.append((current_category, line[2:].strip()))
         return items
 
+    def _apply_terminology(self, notes: str) -> str:
+        """Remap section headers if output_terminology overrides are set."""
+        for original, replacement in self.output_terminology.items():
+            notes = notes.replace(f"## {original}", f"## {replacement}")
+        return notes
+
     def _write_header(self):
         started = datetime.now().strftime("%Y-%m-%d %H:%M")
         header = f"# AXIS Session Log\nStarted: {started}\n\n---\n\n"
@@ -209,6 +225,6 @@ class BatchProducer:
             f.write(header)
 
     def _append_to_log(self, timestamp: str, notes: str):
-        entry = f"## [{timestamp}] Batch {self._batch_count}\n\n{notes}\n\n---\n\n"
+        entry = f"## [{timestamp}] Batch {self._batch_count}\n\n{notes}{AI_DISCLAIMER}\n\n---\n\n"
         with open(self.log_path, "a", encoding="utf-8") as f:
             f.write(entry)
