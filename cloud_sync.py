@@ -1,7 +1,11 @@
-"""Cloud Sync — pushes local events to Supabase and subscribes to remote events.
+"""Cloud Sync — pushes local events to backend and subscribes to remote events.
 
 Follows the monitor pattern: __init__(...), blocking run().
 Other monitors call push_event() to enqueue events for upload.
+
+When a BackendClient is available, all traffic goes through the backend API.
+Falls back to direct Supabase (via CloudDB) if no backend is configured,
+for backward compatibility during migration.
 """
 
 import os
@@ -11,9 +15,6 @@ import time
 import logging
 from datetime import datetime, timezone
 
-import anthropic
-
-from cloud_db import CloudDB
 from claude_monitor import ClaudeEvent
 
 log = logging.getLogger(__name__)
@@ -41,7 +42,7 @@ If there's not enough activity to synthesize, output: [not enough activity]"""
 
 
 class CloudSync:
-    """Pushes local events to Supabase and subscribes to remote events.
+    """Pushes local events to backend and subscribes to remote events.
 
     Thread-safe: other monitors call push_event() from any thread.
     """
@@ -49,6 +50,9 @@ class CloudSync:
     def __init__(self, stop_event: threading.Event,
                  on_remote_event=None,
                  on_synthesis=None,
+                 backend_client=None,
+                 team_id: str = "",
+                 # Legacy params — used only if backend_client is None
                  supabase_url: str = "",
                  supabase_key: str = "",
                  user_identity: str = "stu",
@@ -56,8 +60,10 @@ class CloudSync:
                  project: str | None = None,
                  verbose: bool = False):
         self.stop_event = stop_event
-        self.on_remote_event = on_remote_event    # callback(dict)
-        self.on_synthesis = on_synthesis            # callback(str)
+        self.on_remote_event = on_remote_event
+        self.on_synthesis = on_synthesis
+        self._backend = backend_client
+        self._team_id = team_id
         self._url = supabase_url
         self._key = supabase_key
         self._user = user_identity
@@ -66,10 +72,14 @@ class CloudSync:
         self.verbose = verbose
 
         self._outbound: queue.Queue = queue.Queue()
-        self._db: CloudDB | None = None
+        self._db = None  # CloudDB, only used in legacy mode
         self._last_synthesis: float = 0.0
-        self._anthropic: anthropic.Anthropic | None = None
+        self._last_event_id = "0"
         self._private_mode: bool = False
+
+    @property
+    def _use_backend(self) -> bool:
+        return self._backend is not None and self._team_id
 
     # --- Private mode ---
 
@@ -88,42 +98,29 @@ class CloudSync:
 
     @staticmethod
     def _is_shareable(event: dict) -> bool:
-        """Filter out personal, social, or venting content before it hits the cloud.
-
-        Returns True if the event should be shared, False if it should stay local.
-        """
         summary = (event.get("summary") or "").lower()
         stream = event.get("stream", "")
         event_type = event.get("event_type", "")
 
-        # Tool actions are always shareable (file edits, reads, commits, etc.)
         if event_type in ("file_edit", "file_read", "write", "bash_command",
                           "search", "commit", "branch_status", "unpushed",
                           "unpulled", "divergence"):
             return True
-
-        # Presence events are always shareable
         if stream == "presence":
             return True
 
-        # For text content (chat, voice, user_message), check for non-work signals
-        # These patterns suggest personal/social/venting — not project work
         skip_patterns = [
             "complain", "venting", "rant", "frustrated", "annoyed",
             "pissed", "hate this", "so tired", "burned out",
             "drama", "gossip", "personal",
-            # Social chit-chat
             "what are you up to", "how's it going", "lol", "lmao",
             "haha", "brb", "gtg",
         ]
-
         for pattern in skip_patterns:
             if pattern in summary:
                 return False
 
-        # Short messages with no actionable content — likely chatter
         if len(summary) < 10 and event_type in ("user_message", "chat"):
-            # Allow short but actionable things like "yes", "done", "merged"
             action_words = ["done", "merged", "pushed", "pulled", "fixed",
                            "shipped", "deployed", "yes", "no", "approved"]
             if not any(w in summary for w in action_words):
@@ -134,20 +131,18 @@ class CloudSync:
     # --- Public: enqueue events (thread-safe) ---
 
     def push_event(self, event: dict):
-        """Enqueue a raw event dict for upload. Non-blocking.
-
-        Events are dropped silently in private mode or if content gate rejects them.
-        """
         if self._private_mode:
             return
         if not self._is_shareable(event):
             if self.verbose:
                 print(f"  [sync] filtered (not shareable): {event.get('summary', '')[:50]}")
             return
+        # Add team_id for backend mode
+        if self._use_backend and "team_id" not in event:
+            event["team_id"] = self._team_id
         self._outbound.put(event)
 
     def push_claude_event(self, ce: ClaudeEvent):
-        """Convert a ClaudeEvent to the cloud schema and enqueue."""
         self.push_event({
             "ts": ce.timestamp or datetime.now(timezone.utc).isoformat(),
             "who": self._user,
@@ -164,7 +159,6 @@ class CloudSync:
 
     def push_voice_batch(self, items: list[tuple[str, str]],
                          session_id: str = ""):
-        """Convert BatchProducer items [(category, text), ...] to cloud events."""
         for category, text in items:
             self.push_event({
                 "ts": datetime.now(timezone.utc).isoformat(),
@@ -182,7 +176,6 @@ class CloudSync:
     def push_git_event(self, event_type: str, summary: str,
                        files: list[str] | None = None,
                        raw: dict | None = None):
-        """Push a git/VCS event."""
         self.push_event({
             "ts": datetime.now(timezone.utc).isoformat(),
             "who": self._user,
@@ -198,7 +191,6 @@ class CloudSync:
 
     def push_message_event(self, source: str, sender: str,
                            text: str, timestamp: str = ""):
-        """Push a chat/slack/email message event."""
         self.push_event({
             "ts": timestamp or datetime.now(timezone.utc).isoformat(),
             "who": self._user,
@@ -216,67 +208,165 @@ class CloudSync:
 
     def run(self):
         """Blocking — runs until stop_event is set."""
-        self._db = CloudDB(self._url, self._key, verbose=self.verbose)
+        if self._use_backend:
+            self._run_backend()
+        else:
+            self._run_legacy()
 
-        if not self._db.connected:
+    def _run_backend(self):
+        """Run using backend API for all cloud operations."""
+        if not self._backend.connected:
             if self.verbose:
-                print("  [sync] Supabase not connected — running in local-only mode")
-            # Still drain the queue so push_event() doesn't block callers
+                print("  [sync] Backend unreachable — running in local-only mode")
             while not self.stop_event.is_set():
                 self._drain_queue_discard()
                 self.stop_event.wait(timeout=10.0)
             return
 
-        # Track last-seen event ID for polling remote events
+        if self.verbose:
+            print(f"  [sync] cloud sync active via backend as '{self._user}' "
+                  f"(team {self._team_id[:8]}...)")
+
+        self._last_synthesis = time.time()
+
+        while not self.stop_event.is_set():
+            self._drain_queue_backend()
+            self._poll_remote_backend()
+            self._maybe_synthesize_backend()
+            self.stop_event.wait(timeout=5.0)
+
+        self._drain_queue_backend()
+
+    def _run_legacy(self):
+        """Run using direct Supabase access (backward compat)."""
+        from cloud_db import CloudDB
+        self._db = CloudDB(self._url, self._key, verbose=self.verbose)
+
+        if not self._db.connected:
+            if self.verbose:
+                print("  [sync] Supabase not connected — running in local-only mode")
+            while not self.stop_event.is_set():
+                self._drain_queue_discard()
+                self.stop_event.wait(timeout=10.0)
+            return
+
         self._last_event_id = 0
-        # Seed: get current max ID so we only see new events going forward
         existing = self._db.query_events(limit=1)
         if existing:
             self._last_event_id = existing[0].get("id", 0)
 
         if self.verbose:
-            print(f"  [sync] cloud sync active as '{self._user}' "
-                  f"(synthesis every {self._synthesis_interval}s)")
+            print(f"  [sync] cloud sync active (legacy/Supabase) as '{self._user}'")
 
-        # Init synthesis timer
         self._last_synthesis = time.time()
 
         while not self.stop_event.is_set():
-            self._drain_queue()
-            self._poll_remote()
-            self._maybe_synthesize()
+            self._drain_queue_legacy()
+            self._poll_remote_legacy()
+            self._maybe_synthesize_legacy()
             self.stop_event.wait(timeout=5.0)
 
-        # Flush remaining events
-        self._drain_queue()
+        self._drain_queue_legacy()
         self._db = None
 
-    # --- Internal ---
+    # --- Backend mode internals ---
 
-    def _drain_queue(self):
-        """Batch-drain up to 50 events from the outbound queue."""
+    def _drain_queue_backend(self):
         batch = []
         while len(batch) < 50:
             try:
                 batch.append(self._outbound.get_nowait())
             except queue.Empty:
                 break
+        if batch:
+            count = self._backend.push_events(batch)
+            if self.verbose and count:
+                print(f"  [sync] pushed {count} events via backend")
 
+    def _poll_remote_backend(self):
+        events = self._backend.poll_events(
+            self._team_id, since_id=self._last_event_id, limit=50
+        )
+        for event in events:
+            eid = event.get("id", self._last_event_id)
+            if str(eid) > str(self._last_event_id):
+                self._last_event_id = str(eid)
+            if event.get("who") != self._user:
+                self._handle_remote(event)
+
+    def _maybe_synthesize_backend(self):
+        now = time.time()
+        if now - self._last_synthesis < self._synthesis_interval:
+            return
+        self._last_synthesis = now
+
+        # Use backend proxy for synthesis
+        minutes = (self._synthesis_interval // 60) + 5
+        since = datetime.now(timezone.utc).isoformat()
+        events = self._backend.poll_events(self._team_id, limit=200)
+
+        if len(events) < 3:
+            return
+
+        lines = []
+        for e in events:
+            ts = e.get("ts", "?")
+            who = e.get("who", "?")
+            stream = e.get("stream", "?")
+            summary = e.get("summary", "")
+            files = e.get("files", [])
+            files_str = f" [{', '.join(files)}]" if files else ""
+            lines.append(f"[{ts}] {who} ({stream}): {summary}{files_str}")
+
+        event_text = "\n".join(lines)
+        prompt = f"Here are the recent events:\n\n{event_text}"
+
+        result = self._backend.claude_batch(
+            self._team_id, SYNTHESIS_PROMPT, prompt,
+            model=SYNTHESIS_MODEL, max_tokens=SYNTHESIS_MAX_TOKENS,
+        )
+
+        if not result or result.get("_error"):
+            return
+
+        content = result.get("content", [])
+        summary_text = content[0].get("text", "") if content else ""
+
+        if not summary_text or summary_text.strip() == "[not enough activity]":
+            return
+
+        timestamps = [e.get("ts", "") for e in events if e.get("ts")]
+        window_start = min(timestamps) if timestamps else ""
+        window_end = max(timestamps) if timestamps else ""
+
+        self._backend.push_synthesis(
+            self._team_id, summary_text, window_start, window_end
+        )
+
+        if self.verbose:
+            print(f"  [sync] synthesis generated via backend ({len(events)} events)")
+
+        if self.on_synthesis:
+            try:
+                self.on_synthesis(summary_text)
+            except Exception as e:
+                log.warning(f"Synthesis callback error: {e}")
+
+    # --- Legacy mode internals ---
+
+    def _drain_queue_legacy(self):
+        batch = []
+        while len(batch) < 50:
+            try:
+                batch.append(self._outbound.get_nowait())
+            except queue.Empty:
+                break
         if batch and self._db:
             count = self._db.insert_events(batch)
             if self.verbose and count:
                 print(f"  [sync] pushed {count} events to cloud")
 
-    def _drain_queue_discard(self):
-        """Drain and discard events when not connected."""
-        while True:
-            try:
-                self._outbound.get_nowait()
-            except queue.Empty:
-                break
-
-    def _poll_remote(self):
-        """Poll Supabase for new events from other users."""
+    def _poll_remote_legacy(self):
         if not self._db:
             return
         events, max_id = self._db.poll_new_events(
@@ -287,21 +377,7 @@ class CloudSync:
         for event in events:
             self._handle_remote(event)
 
-    def _handle_remote(self, event: dict):
-        """Called when another user's event arrives via realtime."""
-        if self.verbose:
-            who = event.get("who", "?")
-            summary = event.get("summary", "")[:60]
-            print(f"  [sync] remote: {who} — {summary}")
-
-        if self.on_remote_event:
-            try:
-                self.on_remote_event(event)
-            except Exception as e:
-                log.warning(f"Remote event callback error: {e}")
-
-    def _maybe_synthesize(self):
-        """Run synthesis if enough time has elapsed."""
+    def _maybe_synthesize_legacy(self):
         now = time.time()
         if now - self._last_synthesis < self._synthesis_interval:
             return
@@ -310,7 +386,6 @@ class CloudSync:
         if not self._db:
             return
 
-        # Fetch recent events (window slightly larger than interval)
         minutes = (self._synthesis_interval // 60) + 5
         events = self._db.recent_events(minutes=minutes, project=self._project)
 
@@ -318,7 +393,7 @@ class CloudSync:
             return
 
         try:
-            summary = self._synthesize(events)
+            summary = self._synthesize_legacy(events)
         except Exception as e:
             log.warning(f"Synthesis failed: {e}")
             return
@@ -326,16 +401,13 @@ class CloudSync:
         if not summary or summary.strip() == "[not enough activity]":
             return
 
-        # Store synthesis
         timestamps = [e.get("ts", "") for e in events if e.get("ts")]
         window_start = min(timestamps) if timestamps else ""
         window_end = max(timestamps) if timestamps else ""
 
         self._db.insert_synthesis(
-            content=summary,
-            window_start=window_start,
-            window_end=window_end,
-            project=self._project,
+            content=summary, window_start=window_start,
+            window_end=window_end, project=self._project,
         )
 
         if self.verbose:
@@ -347,15 +419,13 @@ class CloudSync:
             except Exception as e:
                 log.warning(f"Synthesis callback error: {e}")
 
-    def _synthesize(self, events: list[dict]) -> str:
-        """Call Claude to produce a cross-stream activity summary."""
-        if not self._anthropic:
-            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-            if not api_key:
-                return ""
-            self._anthropic = anthropic.Anthropic()
+    def _synthesize_legacy(self, events: list[dict]) -> str:
+        import anthropic as _anthropic
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not api_key:
+            return ""
+        client = _anthropic.Anthropic()
 
-        # Format events for the prompt
         lines = []
         for e in events:
             ts = e.get("ts", "?")
@@ -368,40 +438,50 @@ class CloudSync:
 
         event_text = "\n".join(lines)
 
-        resp = self._anthropic.messages.create(
+        resp = client.messages.create(
             model=SYNTHESIS_MODEL,
             max_tokens=SYNTHESIS_MAX_TOKENS,
             system=SYNTHESIS_PROMPT,
-            messages=[{
-                "role": "user",
-                "content": f"Here are the recent events:\n\n{event_text}",
-            }],
+            messages=[{"role": "user", "content": f"Here are the recent events:\n\n{event_text}"}],
         )
 
         return resp.content[0].text if resp.content else ""
 
+    # --- Shared ---
+
+    def _drain_queue_discard(self):
+        while True:
+            try:
+                self._outbound.get_nowait()
+            except queue.Empty:
+                break
+
+    def _handle_remote(self, event: dict):
+        if self.verbose:
+            who = event.get("who", "?")
+            summary = event.get("summary", "")[:60]
+            print(f"  [sync] remote: {who} — {summary}")
+
+        if self.on_remote_event:
+            try:
+                self.on_remote_event(event)
+            except Exception as e:
+                log.warning(f"Remote event callback error: {e}")
+
     @staticmethod
     def _infer_area(files: list[str]) -> str | None:
-        """Infer a project area from file paths (best-effort)."""
         if not files:
             return None
-
-        # Use the most common directory component across files
         components = []
         for f in files:
             parts = f.replace("\\", "/").split("/")
-            # Skip drive letters and common prefixes
             meaningful = [p for p in parts
                           if p and p not in ("C:", "Users", "GitHub", "src",
                                              "Scripts", "Scenes", "Resources")]
             if len(meaningful) >= 2:
-                # Take the second-to-last directory as the area
                 components.append(meaningful[-2])
-
         if not components:
             return None
-
-        # Return most common
         from collections import Counter
         most_common = Counter(components).most_common(1)
         return most_common[0][0] if most_common else None

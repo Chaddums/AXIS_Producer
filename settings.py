@@ -56,6 +56,12 @@ class Settings:
     dashboard_port: int = 8080            # localhost port for dashboard
     verbose: bool = False
 
+    # Backend integration
+    backend_url: str = ""                 # e.g. https://axis-backend.up.railway.app
+    auth_token: str = ""                  # JWT from backend login/signup
+    user_id: str = ""                     # backend user UUID
+    team_id: str = ""                     # active team UUID
+
     # Workspace type system
     workspace_type: str = "custom"        # dev_team | business_team | healthcare | agency | custom
     workspace_context: str = ""           # free text injected into Claude system prompt

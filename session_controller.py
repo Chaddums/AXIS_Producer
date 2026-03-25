@@ -32,6 +32,7 @@ from claude_monitor import ClaudeMonitor, ClaudeEvent
 from cloud_sync import CloudSync
 from git_health import GitHealthMonitor, GitHealthAlert, BranchInfo
 from phone_mic_server import PhoneMicServer
+from backend_client import BackendClient
 from settings import Settings
 
 
@@ -101,6 +102,14 @@ class SessionController:
         self._briefing_scheduler: BriefingScheduler | None = None
         self._briefing_stop: threading.Event | None = None
         self._briefing_thread: threading.Thread | None = None
+
+        # Backend client (authenticated API access)
+        self._backend_client: BackendClient | None = None
+        if settings.backend_url and settings.auth_token:
+            self._backend_client = BackendClient(
+                settings.backend_url, settings.auth_token,
+                verbose=settings.verbose,
+            )
 
         # Claude monitor + cloud sync (can run independently of recording)
         self._claude_monitor: ClaudeMonitor | None = None
@@ -205,13 +214,16 @@ class SessionController:
             self._cloud_threads.append(t)
             t.start()
 
-        # Cloud sync (pushes events to Supabase, subscribes to remote)
-        if (self.settings.cloud_sync and self.settings.supabase_url
-                and self.settings.supabase_key):
+        # Cloud sync — prefer backend API, fall back to direct Supabase
+        can_backend = self._backend_client and self.settings.team_id
+        can_legacy = (self.settings.supabase_url and self.settings.supabase_key)
+        if self.settings.cloud_sync and (can_backend or can_legacy):
             self._cloud_sync = CloudSync(
                 self._cloud_stop,
                 on_remote_event=self._handle_remote_event,
                 on_synthesis=self._handle_synthesis,
+                backend_client=self._backend_client if can_backend else None,
+                team_id=self.settings.team_id if can_backend else "",
                 supabase_url=self.settings.supabase_url,
                 supabase_key=self.settings.supabase_key,
                 user_identity=self.settings.user_identity,
@@ -449,6 +461,8 @@ class SessionController:
             on_items_logged=_items_logged_wrapper,
             workspace_context=self.settings.workspace_context,
             output_terminology=self.settings.output_terminology,
+            backend_client=self._backend_client,
+            team_id=self.settings.team_id,
         )
 
         # Phone mic (WebSocket, shares chunk_queue with local mic)

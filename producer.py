@@ -65,7 +65,9 @@ class BatchProducer:
                  log_path: str, interval: int = BATCH_INTERVAL_SEC,
                  verbose: bool = False, on_items_logged=None,
                  workspace_context: str = "",
-                 output_terminology: dict | None = None):
+                 output_terminology: dict | None = None,
+                 backend_client=None,
+                 team_id: str = ""):
         self.stop_event = stop_event
         self.buffer_lock = buffer_lock
         self.transcript_buffer = transcript_buffer
@@ -74,6 +76,8 @@ class BatchProducer:
         self.verbose = verbose
         self.on_items_logged = on_items_logged  # callback(list[tuple[str, str]]) — (category, text)
         self.output_terminology = output_terminology or {}
+        self._backend = backend_client
+        self._team_id = team_id
 
         # Build system prompt with optional workspace context
         self._system_prompt = SYSTEM_PROMPT
@@ -82,7 +86,10 @@ class BatchProducer:
 
         self.force_batch = threading.Event()
         self._batch_count = 0
-        self._client = anthropic.Anthropic()  # uses ANTHROPIC_API_KEY env var
+        # Direct Anthropic client as fallback when no backend
+        self._client = None
+        if not self._backend or not self._team_id:
+            self._client = anthropic.Anthropic()  # uses ANTHROPIC_API_KEY env var
 
     def run(self):
         """Blocking — runs until stop_event is set."""
@@ -121,13 +128,7 @@ class BatchProducer:
             print(f"  [startup] {word_count} words captured -> Claude")
 
         try:
-            response = self._client.messages.create(
-                model=MODEL,
-                max_tokens=MAX_TOKENS,
-                system=self._system_prompt,
-                messages=[{"role": "user", "content": transcript}],
-            )
-            notes = self._apply_terminology(response.content[0].text)
+            notes = self._call_claude(transcript)
         except Exception as e:
             print(f"  [startup] Claude API error: {e}")
             with self.buffer_lock:
@@ -170,16 +171,9 @@ class BatchProducer:
             print(f"  [producer] batch {self._batch_count} -- {word_count} words -> Claude")
 
         try:
-            response = self._client.messages.create(
-                model=MODEL,
-                max_tokens=MAX_TOKENS,
-                system=self._system_prompt,
-                messages=[{"role": "user", "content": transcript}],
-            )
-            notes = self._apply_terminology(response.content[0].text)
+            notes = self._call_claude(transcript)
         except Exception as e:
             print(f"  [producer] Claude API error: {e}")
-            # Keep the transcript for next batch
             with self.buffer_lock:
                 self.transcript_buffer.insert(0, transcript)
             return
@@ -198,6 +192,28 @@ class BatchProducer:
                 except Exception as e:
                     if self.verbose:
                         print(f"  [producer] callback error: {e}")
+
+    def _call_claude(self, transcript: str) -> str:
+        """Send transcript to Claude via backend proxy or direct SDK."""
+        if self._backend and self._team_id:
+            result = self._backend.claude_batch(
+                self._team_id, self._system_prompt, transcript,
+                model=MODEL, max_tokens=MAX_TOKENS,
+            )
+            if not result or result.get("_error"):
+                detail = result.get("_detail", "Unknown error") if result else "Backend unreachable"
+                raise RuntimeError(f"Backend proxy error: {detail}")
+            content = result.get("content", [])
+            text = content[0].get("text", "") if content else ""
+        else:
+            response = self._client.messages.create(
+                model=MODEL,
+                max_tokens=MAX_TOKENS,
+                system=self._system_prompt,
+                messages=[{"role": "user", "content": transcript}],
+            )
+            text = response.content[0].text
+        return self._apply_terminology(text)
 
     @staticmethod
     def _extract_items(notes: str) -> list[tuple[str, str]]:
