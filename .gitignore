@@ -15,3 +15,6 @@ phone_mic_cert.pem
 phone_mic_key.pem
 .team_bot_users.json
 dashboard2.html
+build/
+dist/
+*.spec.bak
