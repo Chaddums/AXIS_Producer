@@ -49,9 +49,10 @@ def check_prerequisites() -> bool:
 
     settings_path = os.path.join(os.path.dirname(__file__), "tray_settings.json")
     if not os.path.exists(settings_path):
-        print("ERROR: No tray_settings.json found.")
-        print("  Run setup first: python setup.py")
-        return False
+        # Create default settings — NUX will handle onboarding
+        from settings import Settings
+        Settings().save()
+        print("  First launch — NUX will open in browser.")
 
     return ok
 
