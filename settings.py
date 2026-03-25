@@ -57,7 +57,7 @@ class Settings:
     verbose: bool = False
 
     # Backend integration
-    backend_url: str = ""                 # e.g. https://axis-backend.up.railway.app
+    backend_url: str = "https://axisproducer-production.up.railway.app"
     auth_token: str = ""                  # JWT from backend login/signup
     user_id: str = ""                     # backend user UUID
     team_id: str = ""                     # active team UUID
