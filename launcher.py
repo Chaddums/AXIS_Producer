@@ -68,6 +68,20 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         path = urlparse(self.path).path
+
+        # First-launch redirect: no auth token → NUX
+        if path in ("/", "/dashboard.html"):
+            from settings import Settings
+            s = Settings.load()
+            if not s.auth_token:
+                nux_path = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)), "nux.html")
+                if os.path.exists(nux_path):
+                    self.send_response(302)
+                    self.send_header("Location", "/nux.html")
+                    self.end_headers()
+                    return
+
         if path == "/api/version":
             import hashlib
             dashboard_path = os.path.join(
@@ -78,6 +92,19 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 self._json_response({"version": h})
             except Exception:
                 self._json_response({"version": "unknown"})
+            return
+        elif path == "/api/config":
+            from settings import Settings
+            s = Settings.load()
+            self._json_response({
+                "backend_url": s.backend_url,
+                "has_auth": bool(s.auth_token),
+                "auth_token": s.auth_token,
+                "user_id": s.user_id,
+                "team_id": s.team_id,
+                "user_identity": s.user_identity,
+                "workspace_type": s.workspace_type,
+            })
             return
         elif path == "/api/phone-qr":
             if self._phone_mic:
@@ -104,6 +131,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_transcribe()
         elif path == "/api/chat":
             self._handle_chat()
+        elif path == "/api/settings":
+            self._handle_settings_update()
         else:
             self.send_error(404, "Not Found")
 
@@ -180,6 +209,23 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
             self._json_response({"ok": True, "event": result})
 
+        except Exception as e:
+            self._json_response({"error": str(e)}, 500)
+
+    def _handle_settings_update(self):
+        """Accept partial settings updates from NUX/dashboard."""
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(content_length))
+
+            from settings import Settings
+            s = Settings.load()
+            allowed = set(s.__dataclass_fields__.keys())
+            for key, value in body.items():
+                if key in allowed:
+                    setattr(s, key, value)
+            s.save()
+            self._json_response({"ok": True})
         except Exception as e:
             self._json_response({"error": str(e)}, 500)
 

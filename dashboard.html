@@ -380,6 +380,7 @@
   <span id="conn-status" class="status">connecting...</span>
   <div class="spacer"></div>
   <button id="phone-mic-btn" class="header-btn" onclick="showPhoneQR()" title="Connect phone as mic">Phone Mic</button>
+  <button id="account-btn" class="header-btn" onclick="showAccountPanel()" title="Account & Billing">Account</button>
   <button id="sound-toggle" class="header-btn" title="Toggle alert sounds">Sound: OFF</button>
   <span class="header-label">User:</span>
   <input id="user-input" class="header-input" type="text" placeholder="your name" spellcheck="false">
@@ -1284,6 +1285,130 @@ function updatePairStatus(paired) {
 function closePhoneQR() {
   document.getElementById('phone-modal').classList.remove('active');
   if (_phoneQRPoll) { clearInterval(_phoneQRPoll); _phoneQRPoll = null; }
+}
+</script>
+
+<!-- Account Panel Modal -->
+<div class="modal-overlay" id="account-modal" onclick="if(event.target===this)closeAccountPanel()">
+  <div class="modal" style="max-width:440px;text-align:left">
+    <h2 style="margin-bottom:16px">Account & Billing</h2>
+
+    <div id="acct-logged-out" style="display:none">
+      <div style="color:#94a3b8;font-size:13px;margin-bottom:12px">Not logged in. <a href="/nux.html" style="color:#4ac0ff">Set up your account</a></div>
+    </div>
+
+    <div id="acct-logged-in" style="display:none">
+      <div style="font-size:12px;color:#64748b;margin-bottom:4px">Account</div>
+      <div id="acct-email" style="font-size:14px;margin-bottom:12px">—</div>
+
+      <div style="font-size:12px;color:#64748b;margin-bottom:4px">Team</div>
+      <div id="acct-team" style="font-size:14px;margin-bottom:12px">—</div>
+
+      <div style="font-size:12px;color:#64748b;margin-bottom:4px">Plan</div>
+      <div id="acct-plan" style="font-size:14px;margin-bottom:4px">—</div>
+      <div id="acct-plan-detail" style="font-size:11px;color:#64748b;margin-bottom:12px"></div>
+
+      <div style="font-size:12px;color:#64748b;margin-bottom:4px">Usage this month</div>
+      <div id="acct-usage" style="font-size:14px;margin-bottom:16px">—</div>
+
+      <div style="display:flex;gap:8px">
+        <button class="close-btn" onclick="openBillingPortal()">Manage Billing</button>
+        <button class="close-btn" onclick="inviteFromAccount()">Invite Members</button>
+      </div>
+
+      <div id="acct-invite" style="display:none;margin-top:12px">
+        <div style="font-family:monospace;font-size:16px;color:#4ac0ff;background:#0a0f1a;padding:8px;border-radius:4px;text-align:center;cursor:pointer;user-select:all" id="acct-invite-code"></div>
+        <div style="font-size:11px;color:#64748b;text-align:center;margin-top:4px">Click to copy</div>
+      </div>
+    </div>
+
+    <button class="close-btn" onclick="closeAccountPanel()" style="margin-top:16px">Close</button>
+  </div>
+</div>
+
+<script>
+let _acctConfig = null;
+
+async function showAccountPanel() {
+  document.getElementById('account-modal').classList.add('active');
+
+  try {
+    const r = await fetch('/api/config');
+    _acctConfig = await r.json();
+  } catch(e) {
+    _acctConfig = { has_auth: false };
+  }
+
+  if (!_acctConfig.has_auth) {
+    document.getElementById('acct-logged-out').style.display = 'block';
+    document.getElementById('acct-logged-in').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('acct-logged-out').style.display = 'none';
+  document.getElementById('acct-logged-in').style.display = 'block';
+  document.getElementById('acct-email').textContent = _acctConfig.user_identity || _acctConfig.user_id;
+  document.getElementById('acct-team').textContent = _acctConfig.team_id ? `Team ${_acctConfig.team_id.slice(0,8)}...` : 'No team';
+
+  // Fetch billing status
+  if (_acctConfig.backend_url && _acctConfig.team_id) {
+    try {
+      const br = await fetch(_acctConfig.backend_url + '/billing/status?team_id=' + _acctConfig.team_id, {
+        headers: { 'Authorization': 'Bearer ' + _acctConfig.auth_token },
+      });
+      const billing = await br.json();
+      if (billing.has_subscription) {
+        const tierLabel = billing.tier === 'team' ? 'Team ($49.99/mo)' : `Pro ($24.99/seat × ${billing.seats || 1})`;
+        document.getElementById('acct-plan').textContent = tierLabel;
+        document.getElementById('acct-plan-detail').textContent =
+          billing.trial ? 'Free trial active' :
+          billing.status === 'active' ? 'Active' :
+          billing.status;
+      } else {
+        document.getElementById('acct-plan').textContent = 'No plan';
+        document.getElementById('acct-plan-detail').textContent = '';
+      }
+    } catch(e) {
+      document.getElementById('acct-plan').textContent = 'Could not load';
+    }
+  }
+}
+
+function closeAccountPanel() {
+  document.getElementById('account-modal').classList.remove('active');
+}
+
+async function openBillingPortal() {
+  if (!_acctConfig || !_acctConfig.backend_url) return;
+  try {
+    const r = await fetch(_acctConfig.backend_url + '/billing/portal?team_id=' + _acctConfig.team_id, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + _acctConfig.auth_token },
+    });
+    const data = await r.json();
+    if (data.portal_url) window.open(data.portal_url, '_blank');
+  } catch(e) {}
+}
+
+async function inviteFromAccount() {
+  if (!_acctConfig || !_acctConfig.backend_url) return;
+  const el = document.getElementById('acct-invite');
+  const codeEl = document.getElementById('acct-invite-code');
+  try {
+    const r = await fetch(_acctConfig.backend_url + '/teams/' + _acctConfig.team_id + '/invite', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + _acctConfig.auth_token,
+        'Content-Type': 'application/json',
+      },
+    });
+    const data = await r.json();
+    if (data.code) {
+      codeEl.textContent = data.code;
+      codeEl.onclick = () => navigator.clipboard.writeText(data.code);
+      el.style.display = 'block';
+    }
+  } catch(e) {}
 }
 </script>
 

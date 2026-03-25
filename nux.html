@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AXIS — Setup</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0a0f1a;
+    color: #c8d0e0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .wizard {
+    width: 480px;
+    max-width: 95vw;
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 12px;
+    padding: 32px;
+  }
+
+  .wizard h1 {
+    font-size: 22px;
+    color: #4ac0ff;
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+  .wizard .subtitle {
+    font-size: 13px;
+    color: #64748b;
+    margin-bottom: 24px;
+  }
+
+  .step { display: none; }
+  .step.active { display: block; }
+
+  .step h2 {
+    font-size: 16px;
+    color: #e2e8f0;
+    margin-bottom: 16px;
+  }
+
+  .progress {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 24px;
+  }
+  .progress .dot {
+    width: 100%;
+    height: 3px;
+    background: #1e293b;
+    border-radius: 2px;
+    transition: background 0.3s;
+  }
+  .progress .dot.done { background: #4ac0ff; }
+  .progress .dot.current { background: #4ac0ff; opacity: 0.5; }
+
+  label {
+    display: block;
+    font-size: 12px;
+    color: #94a3b8;
+    margin-bottom: 4px;
+    margin-top: 12px;
+  }
+  label:first-child { margin-top: 0; }
+
+  input[type="text"], input[type="email"], input[type="password"] {
+    width: 100%;
+    padding: 8px 12px;
+    background: #0a0f1a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-size: 14px;
+    font-family: inherit;
+  }
+  input:focus { outline: none; border-color: #4ac0ff; }
+
+  .checkbox-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 16px;
+    font-size: 12px;
+    color: #94a3b8;
+    line-height: 1.4;
+  }
+  .checkbox-row input[type="checkbox"] {
+    margin-top: 2px;
+    flex-shrink: 0;
+  }
+
+  .btn {
+    display: inline-block;
+    padding: 10px 20px;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    background: #1e293b;
+    color: #e2e8f0;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .btn:hover { background: #334155; }
+  .btn.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  .btn.primary:hover { background: #1d4ed8; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-row {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 24px;
+  }
+
+  .error {
+    color: #f87171;
+    font-size: 12px;
+    margin-top: 8px;
+  }
+
+  .info {
+    color: #64748b;
+    font-size: 12px;
+    margin-top: 8px;
+    line-height: 1.4;
+  }
+
+  /* Workspace cards */
+  .workspace-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .ws-card {
+    padding: 16px;
+    background: #0a0f1a;
+    border: 2px solid #1e293b;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .ws-card:hover { border-color: #334155; }
+  .ws-card.selected { border-color: #4ac0ff; }
+  .ws-card h3 { font-size: 14px; color: #e2e8f0; margin-bottom: 4px; }
+  .ws-card p { font-size: 11px; color: #64748b; line-height: 1.3; }
+
+  /* Mic check */
+  .mic-status {
+    padding: 16px;
+    background: #0a0f1a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    text-align: center;
+    margin-top: 12px;
+  }
+  .mic-status .level {
+    height: 8px;
+    background: #1e293b;
+    border-radius: 4px;
+    margin: 12px 0;
+    overflow: hidden;
+  }
+  .mic-status .level-fill {
+    height: 100%;
+    background: #34d399;
+    border-radius: 4px;
+    width: 0%;
+    transition: width 0.1s;
+  }
+  .mic-result {
+    font-size: 12px;
+    color: #94a3b8;
+    margin-top: 8px;
+    min-height: 40px;
+  }
+
+  /* QR */
+  .qr-container {
+    text-align: center;
+    margin: 16px 0;
+  }
+  .qr-container img {
+    max-width: 200px;
+    border-radius: 8px;
+  }
+  .pair-status {
+    font-size: 13px;
+    text-align: center;
+    margin: 8px 0;
+  }
+  .pair-status.paired { color: #34d399; }
+
+  /* Invite */
+  .invite-code {
+    font-family: monospace;
+    font-size: 18px;
+    color: #4ac0ff;
+    text-align: center;
+    padding: 12px;
+    background: #0a0f1a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    margin: 12px 0;
+    user-select: all;
+    cursor: pointer;
+  }
+
+  /* Billing */
+  .tier-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .tier-card {
+    padding: 16px;
+    background: #0a0f1a;
+    border: 2px solid #1e293b;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .tier-card:hover { border-color: #334155; }
+  .tier-card.selected { border-color: #4ac0ff; }
+  .tier-card h3 { font-size: 14px; color: #e2e8f0; margin-bottom: 2px; }
+  .tier-card .price { font-size: 20px; color: #4ac0ff; font-weight: 600; }
+  .tier-card .price-note { font-size: 11px; color: #64748b; }
+  .tier-card p { font-size: 11px; color: #94a3b8; margin-top: 8px; line-height: 1.3; }
+</style>
+</head>
+<body>
+
+<div class="wizard">
+  <h1>AXIS</h1>
+  <div class="subtitle">Ambient session intelligence</div>
+
+  <div class="progress" id="progress"></div>
+
+  <!-- Step 1: Account -->
+  <div class="step" id="step-1" data-title="Create Account">
+    <h2>Create your account</h2>
+    <label>Email</label>
+    <input type="email" id="signup-email" placeholder="you@company.com">
+    <label>Password</label>
+    <input type="password" id="signup-password" placeholder="8+ characters">
+    <label>Your name</label>
+    <input type="text" id="signup-name" placeholder="First Last">
+    <label>Organization (optional)</label>
+    <input type="text" id="signup-org" placeholder="Company name">
+    <div class="checkbox-row">
+      <input type="checkbox" id="signup-attest">
+      <span>I confirm this account will be used for lawful internal team communication only, not for surveillance, law enforcement, or monitoring non-consenting parties.</span>
+    </div>
+    <div class="error" id="signup-error"></div>
+    <div class="btn-row">
+      <span></span>
+      <button class="btn primary" onclick="doSignup()">Create Account</button>
+    </div>
+    <div class="info" style="margin-top:16px">
+      Already have an account? <a href="#" onclick="showLogin()" style="color:#4ac0ff">Log in</a>
+    </div>
+  </div>
+
+  <!-- Step 1b: Login (hidden by default) -->
+  <div class="step" id="step-login" data-title="Log In">
+    <h2>Log in</h2>
+    <label>Email</label>
+    <input type="email" id="login-email">
+    <label>Password</label>
+    <input type="password" id="login-password">
+    <div class="error" id="login-error"></div>
+    <div class="btn-row">
+      <a href="#" onclick="showSignup()" style="color:#4ac0ff;font-size:13px">Create account</a>
+      <button class="btn primary" onclick="doLogin()">Log In</button>
+    </div>
+  </div>
+
+  <!-- Step 2: Team or Solo -->
+  <div class="step" id="step-2" data-title="Team Setup">
+    <h2>How will you use AXIS?</h2>
+    <div class="workspace-cards" style="margin-top:16px">
+      <div class="ws-card" onclick="chooseTeamMode('team')" id="mode-team">
+        <h3>Team</h3>
+        <p>Shared workspace with your team. Cloud sync, invite members, phone pairing.</p>
+      </div>
+      <div class="ws-card" onclick="chooseTeamMode('solo')" id="mode-solo">
+        <h3>Solo</h3>
+        <p>Personal workspace. Local-only by default, upgrade to cloud later.</p>
+      </div>
+    </div>
+    <label style="margin-top:16px">Team name</label>
+    <input type="text" id="team-name" placeholder="My Team">
+    <div class="error" id="team-error"></div>
+    <div class="btn-row">
+      <button class="btn" onclick="goStep(1)">Back</button>
+      <button class="btn primary" onclick="doCreateTeam()">Continue</button>
+    </div>
+  </div>
+
+  <!-- Step 3: Workspace Type -->
+  <div class="step" id="step-3" data-title="Workspace Type">
+    <h2>What kind of team?</h2>
+    <div class="workspace-cards" style="margin-top:16px">
+      <div class="ws-card" onclick="pickWorkspace('dev_team')" id="ws-dev_team">
+        <h3>Dev Team</h3>
+        <p>Slack, VCS, calendar, email, Claude Code monitoring</p>
+      </div>
+      <div class="ws-card" onclick="pickWorkspace('business_team')" id="ws-business_team">
+        <h3>Business Team</h3>
+        <p>Slack, calendar, email. No code monitoring.</p>
+      </div>
+      <div class="ws-card" onclick="pickWorkspace('healthcare')" id="ws-healthcare">
+        <h3>Healthcare / Clinic</h3>
+        <p>Calendar, email only. Cloud sync off. HIPAA-aware defaults.</p>
+      </div>
+      <div class="ws-card" onclick="pickWorkspace('agency')" id="ws-agency">
+        <h3>Agency / Creative</h3>
+        <p>Slack, calendar, email. Project-focused.</p>
+      </div>
+    </div>
+    <label style="margin-top:16px">Describe your team (optional — helps AXIS understand context)</label>
+    <input type="text" id="ws-context" placeholder="e.g. 12-person veterinary clinic">
+    <div class="error" id="ws-error"></div>
+    <div class="btn-row">
+      <button class="btn" onclick="goStep(2)">Back</button>
+      <button class="btn primary" onclick="doSetWorkspace()">Continue</button>
+    </div>
+  </div>
+
+  <!-- Step 4: Mic Check -->
+  <div class="step" id="step-4" data-title="Mic Check">
+    <h2>Test your microphone</h2>
+    <p class="info" style="margin-top:0">Speak for 5 seconds. AXIS will transcribe it to verify the pipeline works.</p>
+    <div class="mic-status">
+      <div id="mic-label">Click to start</div>
+      <div class="level"><div class="level-fill" id="mic-level"></div></div>
+      <button class="btn" id="mic-btn" onclick="doMicCheck()">Start Mic Check</button>
+    </div>
+    <div class="mic-result" id="mic-result"></div>
+    <div class="btn-row">
+      <button class="btn" onclick="goStep(3)">Back</button>
+      <button class="btn primary" onclick="goStep(5)" id="mic-next" disabled>Continue</button>
+    </div>
+  </div>
+
+  <!-- Step 5: QR Pairing (team only) -->
+  <div class="step" id="step-5" data-title="Phone Pairing">
+    <h2>Connect your phone (optional)</h2>
+    <p class="info" style="margin-top:0">Use your phone as a wireless microphone. Scan the QR code below.</p>
+    <div class="qr-container">
+      <img id="nux-qr-img" src="" alt="QR Code">
+      <div class="pair-status" id="nux-pair-status">Loading...</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="goStep(4)">Back</button>
+      <button class="btn primary" onclick="goStep(6)">Continue</button>
+    </div>
+  </div>
+
+  <!-- Step 6: Invite Teammates -->
+  <div class="step" id="step-6" data-title="Invite">
+    <h2>Invite teammates (optional)</h2>
+    <p class="info" style="margin-top:0">Share this invite code with your team. They'll use it to join your workspace.</p>
+    <div class="invite-code" id="invite-code" onclick="copyInvite()">Generating...</div>
+    <div class="info" style="text-align:center">Click to copy</div>
+    <div class="btn-row">
+      <button class="btn" onclick="goStep(5)">Back</button>
+      <button class="btn primary" onclick="goStep(7)">Continue</button>
+    </div>
+  </div>
+
+  <!-- Step 7: Billing -->
+  <div class="step" id="step-7" data-title="Plan">
+    <h2>Choose your plan</h2>
+    <p class="info" style="margin-top:0;margin-bottom:16px">14-day free trial. No charge until trial ends.</p>
+    <div class="tier-cards">
+      <div class="tier-card selected" onclick="pickTier('team')" id="tier-team">
+        <h3>Team</h3>
+        <div class="price">$49.99<span class="price-note">/mo</span></div>
+        <p>Up to 20 seats. Desktop + phone mic. Local Whisper. Cloud sync.</p>
+      </div>
+      <div class="tier-card" onclick="pickTier('pro')" id="tier-pro">
+        <h3>Pro</h3>
+        <div class="price">$24.99<span class="price-note">/seat/mo</span></div>
+        <p>Standalone mobile. Cloud transcription. Works anywhere.</p>
+      </div>
+    </div>
+    <label>Promo code (optional)</label>
+    <input type="text" id="promo-code" placeholder="e.g. VETCLINIC2026">
+    <div class="error" id="billing-error"></div>
+    <div class="btn-row">
+      <button class="btn" onclick="goStep(6)">Back</button>
+      <button class="btn primary" onclick="doBilling()">Start Free Trial</button>
+    </div>
+  </div>
+
+  <!-- Step 8: Done -->
+  <div class="step" id="step-8" data-title="Done">
+    <h2>You're all set</h2>
+    <p class="info" style="margin-top:0;font-size:14px;color:#e2e8f0">
+      AXIS is ready to go. Click below to open the dashboard and start your first session.
+    </p>
+    <div class="btn-row" style="justify-content:center;margin-top:32px">
+      <button class="btn primary" onclick="finish()" style="font-size:16px;padding:12px 32px">Open Dashboard</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const TOTAL_STEPS = 8;
+let currentStep = 1;
+let state = {
+  token: '', userId: '', teamId: '', teamMode: 'team',
+  workspaceType: 'dev_team', tier: 'team', backendUrl: '',
+};
+
+// Load config from local server
+async function init() {
+  try {
+    const r = await fetch('/api/config');
+    const cfg = await r.json();
+    state.backendUrl = cfg.backend_url || '';
+    if (cfg.has_auth) {
+      // Already logged in — skip to dashboard
+      window.location.href = '/dashboard.html';
+      return;
+    }
+  } catch(e) {}
+  buildProgress();
+  goStep(1);
+}
+
+function buildProgress() {
+  const bar = document.getElementById('progress');
+  bar.innerHTML = '';
+  for (let i = 1; i <= TOTAL_STEPS; i++) {
+    const d = document.createElement('div');
+    d.className = 'dot';
+    d.id = `dot-${i}`;
+    bar.appendChild(d);
+  }
+}
+
+function goStep(n) {
+  // Hide all steps
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  // Show target
+  const target = document.getElementById(`step-${n}`);
+  if (target) {
+    target.classList.add('active');
+    currentStep = n;
+  }
+  // Update progress
+  for (let i = 1; i <= TOTAL_STEPS; i++) {
+    const dot = document.getElementById(`dot-${i}`);
+    if (!dot) continue;
+    dot.className = 'dot';
+    if (i < n) dot.classList.add('done');
+    else if (i === n) dot.classList.add('current');
+  }
+
+  // Step-specific init
+  if (n === 5) loadQR();
+  if (n === 6) generateInvite();
+}
+
+function showLogin() {
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.getElementById('step-login').classList.add('active');
+}
+function showSignup() {
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.getElementById('step-1').classList.add('active');
+}
+
+function api(path, body) {
+  return fetch(state.backendUrl + path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(state.token ? {'Authorization': `Bearer ${state.token}`} : {}),
+    },
+    body: JSON.stringify(body),
+  }).then(r => r.json());
+}
+
+function apiGet(path) {
+  return fetch(state.backendUrl + path, {
+    headers: state.token ? {'Authorization': `Bearer ${state.token}`} : {},
+  }).then(r => r.json());
+}
+
+async function saveSettings(updates) {
+  await fetch('/api/settings', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(updates),
+  });
+}
+
+// Step 1: Signup
+async function doSignup() {
+  const email = document.getElementById('signup-email').value.trim();
+  const password = document.getElementById('signup-password').value;
+  const name = document.getElementById('signup-name').value.trim();
+  const org = document.getElementById('signup-org').value.trim();
+  const attested = document.getElementById('signup-attest').checked;
+  const errEl = document.getElementById('signup-error');
+  errEl.textContent = '';
+
+  if (!email || !password || !name) { errEl.textContent = 'All fields required'; return; }
+  if (password.length < 8) { errEl.textContent = 'Password must be 8+ characters'; return; }
+  if (!attested) { errEl.textContent = 'Self-attestation required'; return; }
+
+  try {
+    const data = await api('/auth/signup', {
+      email, password, name, organization: org, self_attested: true,
+    });
+    if (data.token) {
+      state.token = data.token;
+      state.userId = data.user_id;
+      await saveSettings({
+        auth_token: data.token,
+        user_id: data.user_id,
+        user_identity: name,
+        backend_url: state.backendUrl,
+      });
+      goStep(2);
+    } else {
+      errEl.textContent = data.detail || data._detail || 'Signup failed';
+    }
+  } catch(e) {
+    errEl.textContent = 'Could not reach server';
+  }
+}
+
+// Step 1b: Login
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  errEl.textContent = '';
+
+  try {
+    const data = await api('/auth/login', { email, password });
+    if (data.token) {
+      state.token = data.token;
+      state.userId = data.user_id;
+      if (data.teams && data.teams.length > 0) {
+        state.teamId = data.teams[0];
+      }
+      await saveSettings({
+        auth_token: data.token,
+        user_id: data.user_id,
+        team_id: state.teamId,
+        backend_url: state.backendUrl,
+      });
+      if (state.teamId) {
+        goStep(3); // Skip team creation
+      } else {
+        goStep(2);
+      }
+    } else {
+      errEl.textContent = data.detail || 'Login failed';
+    }
+  } catch(e) {
+    errEl.textContent = 'Could not reach server';
+  }
+}
+
+// Step 2: Team mode
+function chooseTeamMode(mode) {
+  state.teamMode = mode;
+  document.getElementById('mode-team').classList.toggle('selected', mode === 'team');
+  document.getElementById('mode-solo').classList.toggle('selected', mode === 'solo');
+  const nameInput = document.getElementById('team-name');
+  if (mode === 'solo') {
+    nameInput.value = 'Personal';
+    nameInput.disabled = true;
+  } else {
+    nameInput.value = '';
+    nameInput.disabled = false;
+  }
+}
+
+async function doCreateTeam() {
+  const name = document.getElementById('team-name').value.trim() || 'My Team';
+  const errEl = document.getElementById('team-error');
+  errEl.textContent = '';
+
+  try {
+    const data = await api('/teams', { name });
+    if (data.id) {
+      state.teamId = data.id;
+      // Refresh token to include new team
+      const refreshed = await api('/auth/refresh', { token: state.token });
+      if (refreshed.token) {
+        state.token = refreshed.token;
+      }
+      await saveSettings({
+        auth_token: state.token,
+        team_id: state.teamId,
+        cloud_sync: state.teamMode === 'team',
+      });
+      goStep(3);
+    } else {
+      errEl.textContent = data.detail || 'Failed to create team';
+    }
+  } catch(e) {
+    errEl.textContent = 'Could not reach server';
+  }
+}
+
+// Step 3: Workspace type
+function pickWorkspace(type) {
+  state.workspaceType = type;
+  document.querySelectorAll('.ws-card').forEach(c => c.classList.remove('selected'));
+  document.getElementById(`ws-${type}`).classList.add('selected');
+}
+
+async function doSetWorkspace() {
+  const context = document.getElementById('ws-context').value.trim();
+  const errEl = document.getElementById('ws-error');
+  errEl.textContent = '';
+
+  if (!state.workspaceType) { errEl.textContent = 'Pick a workspace type'; return; }
+
+  try {
+    await fetch(state.backendUrl + `/teams/${state.teamId}/config`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`,
+      },
+      body: JSON.stringify({
+        workspace_type: state.workspaceType,
+        workspace_context: context,
+        privacy_preset: state.workspaceType === 'healthcare' ? 'hipaa_aware' : 'standard',
+      }),
+    });
+
+    // Apply preset locally
+    const presetSettings = { workspace_type: state.workspaceType, workspace_context: context };
+    if (state.workspaceType === 'healthcare') {
+      presetSettings.cloud_sync = false;
+      presetSettings.privacy_preset = 'hipaa_aware';
+      presetSettings.slack_monitor = false;
+      presetSettings.vcs_monitor = false;
+      presetSettings.claude_monitor = false;
+    }
+    await saveSettings(presetSettings);
+    goStep(4);
+  } catch(e) {
+    errEl.textContent = 'Failed to save workspace config';
+  }
+}
+
+// Step 4: Mic check
+let _micStream = null;
+let _micCtx = null;
+async function doMicCheck() {
+  const btn = document.getElementById('mic-btn');
+  const label = document.getElementById('mic-label');
+  const result = document.getElementById('mic-result');
+  const levelEl = document.getElementById('mic-level');
+  btn.disabled = true;
+  label.textContent = 'Listening...';
+  result.textContent = '';
+
+  try {
+    _micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    _micCtx = new AudioContext();
+    const source = _micCtx.createMediaStreamSource(_micStream);
+    const analyser = _micCtx.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    const data = new Uint8Array(analyser.frequencyBinCount);
+
+    // Show levels for 5 seconds
+    const start = Date.now();
+    const recorder = new MediaRecorder(_micStream);
+    const chunks = [];
+    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.start();
+
+    const interval = setInterval(() => {
+      analyser.getByteFrequencyData(data);
+      const avg = data.reduce((a,b) => a+b, 0) / data.length;
+      levelEl.style.width = Math.min(100, avg * 2) + '%';
+
+      if (Date.now() - start > 5000) {
+        clearInterval(interval);
+        recorder.stop();
+        _micStream.getTracks().forEach(t => t.stop());
+        _micCtx.close();
+        label.textContent = 'Processing...';
+      }
+    }, 100);
+
+    recorder.onstop = async () => {
+      const blob = new Blob(chunks, { type: 'audio/webm' });
+      const arrayBuf = await blob.arrayBuffer();
+
+      try {
+        const resp = await fetch('/api/transcribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'audio/webm' },
+          body: arrayBuf,
+        });
+        const data = await resp.json();
+        if (data.text && data.text.trim()) {
+          result.innerHTML = `<span style="color:#34d399">Pipeline verified.</span> Heard: "${data.text.trim()}"`;
+          document.getElementById('mic-next').disabled = false;
+        } else {
+          result.innerHTML = `<span style="color:#f59e0b">No speech detected.</span> Try again or skip.`;
+          document.getElementById('mic-next').disabled = false;
+        }
+      } catch(e) {
+        result.innerHTML = `<span style="color:#f87171">Transcription failed.</span> ${e.message}`;
+        document.getElementById('mic-next').disabled = false;
+      }
+      label.textContent = 'Done';
+      btn.disabled = false;
+      btn.textContent = 'Try Again';
+    };
+  } catch(e) {
+    label.textContent = 'Mic access denied';
+    result.textContent = e.message;
+    btn.disabled = false;
+    document.getElementById('mic-next').disabled = false;
+  }
+}
+
+// Step 5: QR pairing
+let _qrPoll = null;
+async function loadQR() {
+  if (_qrPoll) clearInterval(_qrPoll);
+  try {
+    const r = await fetch('/api/phone-qr');
+    const data = await r.json();
+    if (data.qr_base64) {
+      document.getElementById('nux-qr-img').src = data.qr_base64;
+      document.getElementById('nux-pair-status').textContent = 'Scan with your phone';
+    } else {
+      document.getElementById('nux-pair-status').textContent = data.error || 'Not available';
+    }
+  } catch(e) {
+    document.getElementById('nux-pair-status').textContent = 'Phone mic server not running';
+  }
+
+  _qrPoll = setInterval(async () => {
+    try {
+      const r = await fetch('/api/phone-status');
+      const s = await r.json();
+      const el = document.getElementById('nux-pair-status');
+      if (s.paired) {
+        el.textContent = 'Phone connected';
+        el.classList.add('paired');
+      }
+    } catch {}
+  }, 2000);
+}
+
+// Step 6: Invite
+async function generateInvite() {
+  const el = document.getElementById('invite-code');
+  try {
+    const data = await api(`/teams/${state.teamId}/invite`, {});
+    if (data.code) {
+      el.textContent = data.code;
+    } else {
+      el.textContent = 'Could not generate code';
+    }
+  } catch(e) {
+    el.textContent = 'Error';
+  }
+}
+
+function copyInvite() {
+  const code = document.getElementById('invite-code').textContent;
+  navigator.clipboard.writeText(code);
+}
+
+// Step 7: Billing
+function pickTier(tier) {
+  state.tier = tier;
+  document.getElementById('tier-team').classList.toggle('selected', tier === 'team');
+  document.getElementById('tier-pro').classList.toggle('selected', tier === 'pro');
+}
+
+async function doBilling() {
+  const promo = document.getElementById('promo-code').value.trim();
+  const errEl = document.getElementById('billing-error');
+  errEl.textContent = '';
+
+  try {
+    const payload = {
+      tier: state.tier,
+      team_id: state.teamId,
+    };
+    if (promo) payload.promo_code = promo;
+
+    const data = await api('/billing/checkout', payload);
+    if (data.checkout_url) {
+      // Open Stripe checkout in new tab
+      window.open(data.checkout_url, '_blank');
+      // Move to done step — they'll complete billing in the new tab
+      goStep(8);
+    } else {
+      errEl.textContent = data.detail || data._detail || 'Billing setup failed';
+    }
+  } catch(e) {
+    errEl.textContent = 'Could not reach billing server';
+  }
+}
+
+// Step 8: Done
+function finish() {
+  window.location.href = '/dashboard.html';
+}
+
+init();
+</script>
+
+</body>
+</html>
