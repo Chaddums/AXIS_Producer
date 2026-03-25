@@ -22,8 +22,8 @@ def init(config: Config):
 # These should be env vars in production. Hardcoded here for clarity.
 # Override via config if needed.
 
-TEAM_PRICE_ID = ""  # $49.99/mo flat — set after Stripe product creation
-PRO_PRICE_ID = ""   # $24.99/seat/mo — set after Stripe product creation
+TEAM_PRICE_ID = "price_1TElI7DKfzAhq2Qe7mtL2hsj"   # AXIS Team $49.99/mo
+PRO_PRICE_ID = "price_1TElHtDKfzAhq2QeGkIRaNx6"   # AXIS Pro $24.99/seat/mo
 
 
 class CheckoutRequest(BaseModel):
