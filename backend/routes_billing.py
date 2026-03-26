@@ -62,10 +62,13 @@ async def redeem_code(req: RedeemCodeRequest, user: dict = Depends(auth.get_curr
         raise HTTPException(status_code=400, detail="Invalid code")
 
     promo = promos.data[0]
-    coupon = promo.coupon
+    coupon = promo.get("coupon", {}) if isinstance(promo, dict) else getattr(promo, "coupon", None)
+    if isinstance(coupon, str):
+        coupon = stripe.Coupon.retrieve(coupon)
+    pct = getattr(coupon, "percent_off", None) or (coupon.get("percent_off") if isinstance(coupon, dict) else 0) or 0
 
     # Only allow this path for 100% off coupons
-    if not (coupon.percent_off == 100):
+    if pct != 100:
         raise HTTPException(status_code=400, detail="This code requires checkout")
 
     # Check if subscription already exists for this team
@@ -98,12 +101,23 @@ async def check_promo(code: str):
         promos = stripe.PromotionCode.list(code=code, active=True, limit=1)
         if not promos.data:
             return {"valid": False}
-        coupon = promos.data[0].coupon
+        promo = promos.data[0]
+        coupon = promo.get("coupon", {}) if isinstance(promo, dict) else getattr(promo, "coupon", None)
+        if coupon is None:
+            # Fetch coupon separately if not expanded
+            coupon_id = promo.get("coupon") if isinstance(promo, dict) else getattr(promo, "coupon", None)
+            if isinstance(coupon_id, str):
+                coupon = stripe.Coupon.retrieve(coupon_id)
+            else:
+                coupon = coupon_id
+        pct = getattr(coupon, "percent_off", None) or (coupon.get("percent_off") if isinstance(coupon, dict) else 0) or 0
+        amt = getattr(coupon, "amount_off", None) or (coupon.get("amount_off") if isinstance(coupon, dict) else 0) or 0
+        dur = getattr(coupon, "duration", None) or (coupon.get("duration") if isinstance(coupon, dict) else "once")
         return {
             "valid": True,
-            "percent_off": coupon.percent_off or 0,
-            "amount_off": coupon.amount_off or 0,
-            "duration": coupon.duration,
+            "percent_off": pct,
+            "amount_off": amt,
+            "duration": dur,
         }
     except Exception as e:
         print(f"check-promo error: {traceback.format_exc()}")
