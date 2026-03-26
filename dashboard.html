@@ -381,6 +381,7 @@
   <span id="conn-status" class="status">connecting...</span>
   <div class="spacer"></div>
   <button id="phone-mic-btn" class="header-btn" onclick="showPhoneQR()" title="Connect phone as mic">Phone Mic</button>
+  <button id="config-btn" class="header-btn" onclick="showConfigPanel()" title="Settings">Settings</button>
   <button id="account-btn" class="header-btn" onclick="showAccountPanel()" title="Account & Billing">Account</button>
   <button id="sound-toggle" class="header-btn" title="Toggle alert sounds">Sound: OFF</button>
   <span class="header-label">User:</span>
@@ -1529,6 +1530,130 @@ async function inviteFromAccount() {
       el.style.display = 'block';
     }
   } catch(e) {}
+}
+</script>
+
+<!-- Config Panel Modal -->
+<div class="modal-overlay" id="config-modal" onclick="if(event.target===this)closeConfigPanel()">
+  <div class="modal" style="max-width:520px;text-align:left;max-height:80vh;overflow-y:auto">
+    <h2 style="margin-bottom:16px">Settings</h2>
+
+    <div style="font-size:12px;color:#64748b;margin-bottom:4px;margin-top:12px">Monitors</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+      <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin:0">
+        <input type="checkbox" id="cfg-slack"> Slack
+      </label>
+      <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin:0">
+        <input type="checkbox" id="cfg-email"> Email
+      </label>
+      <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin:0">
+        <input type="checkbox" id="cfg-calendar"> Calendar
+      </label>
+      <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin:0">
+        <input type="checkbox" id="cfg-vcs"> Git / VCS
+      </label>
+      <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin:0">
+        <input type="checkbox" id="cfg-claude"> Claude Code
+      </label>
+      <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin:0">
+        <input type="checkbox" id="cfg-chat"> Chat monitor
+      </label>
+    </div>
+
+    <div style="font-size:12px;color:#64748b;margin-bottom:4px;margin-top:16px">Audio</div>
+    <label style="font-size:13px;margin:0">Whisper model</label>
+    <select id="cfg-whisper" style="width:100%;padding:6px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px;margin-top:4px">
+      <option value="tiny.en">Tiny (fastest, least accurate)</option>
+      <option value="base.en">Base (default)</option>
+      <option value="small.en">Small (better accuracy)</option>
+      <option value="medium.en">Medium (best local accuracy)</option>
+    </select>
+
+    <label style="font-size:13px;margin-top:8px">Batch interval (seconds)</label>
+    <input type="number" id="cfg-batch-interval" min="60" max="1800" step="30" style="width:100%;padding:6px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px;margin-top:4px">
+
+    <div style="font-size:12px;color:#64748b;margin-bottom:4px;margin-top:16px">Notifications</div>
+    <select id="cfg-notification" style="width:100%;padding:6px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px">
+      <option value="ambient">All (ambient and above)</option>
+      <option value="info">Info and above</option>
+      <option value="warning">Warning and critical only</option>
+      <option value="critical">Critical only</option>
+    </select>
+
+    <div style="font-size:12px;color:#64748b;margin-bottom:4px;margin-top:16px">Privacy</div>
+    <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin:0">
+      <input type="checkbox" id="cfg-cloud-sync"> Cloud sync
+    </label>
+    <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin:4px 0 0 0">
+      <input type="checkbox" id="cfg-auto-detect"> Auto-detect speech on launch
+    </label>
+
+    <div style="font-size:12px;color:#64748b;margin-bottom:4px;margin-top:16px">Workspace</div>
+    <label style="font-size:13px;margin:0">Context (injected into AI prompt)</label>
+    <input type="text" id="cfg-ws-context" placeholder="e.g. 12-person veterinary clinic" style="width:100%;padding:6px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px;margin-top:4px">
+
+    <div style="display:flex;gap:8px;margin-top:20px">
+      <button class="close-btn" onclick="saveConfig()" style="background:#2563eb;border-color:#2563eb;color:#fff">Save</button>
+      <button class="close-btn" onclick="closeConfigPanel()">Cancel</button>
+    </div>
+    <div id="config-status" style="font-size:11px;margin-top:8px;min-height:14px"></div>
+  </div>
+</div>
+
+<script>
+async function showConfigPanel() {
+  document.getElementById('config-modal').classList.add('active');
+  try {
+    const r = await fetch('/api/config');
+    const cfg = await r.json();
+    document.getElementById('cfg-slack').checked = cfg.slack_monitor || false;
+    document.getElementById('cfg-email').checked = cfg.email_monitor || false;
+    document.getElementById('cfg-calendar').checked = cfg.calendar_monitor || false;
+    document.getElementById('cfg-vcs').checked = cfg.vcs_monitor || false;
+    document.getElementById('cfg-claude').checked = cfg.claude_monitor || false;
+    document.getElementById('cfg-chat').checked = cfg.chat_monitor || false;
+    document.getElementById('cfg-whisper').value = cfg.whisper_model || 'base.en';
+    document.getElementById('cfg-batch-interval').value = cfg.batch_interval || 300;
+    document.getElementById('cfg-notification').value = cfg.notification_level || 'info';
+    document.getElementById('cfg-cloud-sync').checked = cfg.cloud_sync || false;
+    document.getElementById('cfg-auto-detect').checked = cfg.auto_detect !== false;
+    document.getElementById('cfg-ws-context').value = cfg.workspace_context || '';
+  } catch(e) {
+    document.getElementById('config-status').textContent = 'Failed to load settings';
+  }
+}
+
+function closeConfigPanel() {
+  document.getElementById('config-modal').classList.remove('active');
+  document.getElementById('config-status').textContent = '';
+}
+
+async function saveConfig() {
+  const status = document.getElementById('config-status');
+  status.textContent = 'Saving...';
+  try {
+    await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slack_monitor: document.getElementById('cfg-slack').checked,
+        email_monitor: document.getElementById('cfg-email').checked,
+        calendar_monitor: document.getElementById('cfg-calendar').checked,
+        vcs_monitor: document.getElementById('cfg-vcs').checked,
+        claude_monitor: document.getElementById('cfg-claude').checked,
+        chat_monitor: document.getElementById('cfg-chat').checked,
+        whisper_model: document.getElementById('cfg-whisper').value,
+        batch_interval: parseInt(document.getElementById('cfg-batch-interval').value) || 300,
+        notification_level: document.getElementById('cfg-notification').value,
+        cloud_sync: document.getElementById('cfg-cloud-sync').checked,
+        auto_detect: document.getElementById('cfg-auto-detect').checked,
+        workspace_context: document.getElementById('cfg-ws-context').value,
+      }),
+    });
+    status.innerHTML = '<span style="color:#34d399">Saved. Restart AXIS to apply changes.</span>';
+  } catch(e) {
+    status.innerHTML = '<span style="color:#f87171">Failed to save</span>';
+  }
 }
 </script>
 

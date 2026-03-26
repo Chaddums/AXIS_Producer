@@ -96,16 +96,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return
         elif path == "/api/config":
             from settings import Settings
+            from dataclasses import asdict
             s = Settings.load()
-            self._json_response({
-                "backend_url": s.backend_url,
-                "has_auth": bool(s.auth_token),
-                "auth_token": s.auth_token,
-                "user_id": s.user_id,
-                "team_id": s.team_id,
-                "user_identity": s.user_identity,
-                "workspace_type": s.workspace_type,
-            })
+            cfg = asdict(s)
+            cfg["has_auth"] = bool(s.auth_token)
+            self._json_response(cfg)
             return
         elif path == "/api/phone-qr":
             if self._phone_mic:
