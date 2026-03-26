@@ -297,7 +297,7 @@
         <p>Personal workspace. Local-only by default, upgrade to cloud later.</p>
       </div>
     </div>
-    <label style="margin-top:16px">Team name</label>
+    <label style="margin-top:16px" id="team-name-label">Team name</label>
     <input type="text" id="team-name" placeholder="My Team">
     <div class="error" id="team-error"></div>
     <div class="btn-row">
@@ -308,7 +308,7 @@
 
   <!-- Step 3: Workspace Type -->
   <div class="step" id="step-3" data-title="Workspace Type">
-    <h2>What kind of team?</h2>
+    <h2 id="ws-heading">What kind of team?</h2>
     <div class="workspace-cards" style="margin-top:16px">
       <div class="ws-card" onclick="pickWorkspace('dev_team')" id="ws-dev_team">
         <h3>Dev Team</h3>
@@ -327,7 +327,7 @@
         <p>Slack, calendar, email. Project-focused.</p>
       </div>
     </div>
-    <label style="margin-top:16px">Describe your team (optional — helps AXIS understand context)</label>
+    <label style="margin-top:16px" id="ws-context-label">Describe your team (optional — helps AXIS understand context)</label>
     <input type="text" id="ws-context" placeholder="e.g. 12-person veterinary clinic">
     <div class="error" id="ws-error"></div>
     <div class="btn-row">
@@ -470,6 +470,16 @@ function goStep(n) {
   }
 
   // Step-specific init
+  if (n === 3) {
+    const solo = state.teamMode === 'solo';
+    document.getElementById('ws-heading').textContent = solo ? 'What do you do?' : 'What kind of team?';
+    document.getElementById('ws-context-label').textContent = solo
+      ? 'Describe your role (optional — helps AXIS understand context)'
+      : 'Describe your team (optional — helps AXIS understand context)';
+    document.getElementById('ws-context').placeholder = solo
+      ? 'e.g. freelance developer, consultant'
+      : 'e.g. 12-person veterinary clinic';
+  }
   if (n === 5) loadQR();
   if (n === 6) generateInvite();
 }
@@ -549,6 +559,9 @@ async function doSignup() {
         user_id: data.user_id,
         user_identity: name,
         backend_url: state.backendUrl,
+        // Clear any stale data from previous installs
+        team_id: '',
+        cloud_sync: false,
       });
       goStep(2);
     } else {
@@ -599,12 +612,15 @@ function chooseTeamMode(mode) {
   document.getElementById('mode-team').classList.toggle('selected', mode === 'team');
   document.getElementById('mode-solo').classList.toggle('selected', mode === 'solo');
   const nameInput = document.getElementById('team-name');
+  const nameLabel = document.getElementById('team-name-label');
   if (mode === 'solo') {
     nameInput.value = 'Personal';
     nameInput.disabled = true;
+    nameLabel.textContent = 'Workspace name';
   } else {
     nameInput.value = '';
     nameInput.disabled = false;
+    nameLabel.textContent = 'Team name';
   }
 }
 
