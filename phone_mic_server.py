@@ -97,11 +97,13 @@ class PhoneMicServer:
     """WebSocket server that receives audio from a phone browser."""
 
     def __init__(self, chunk_queue, stop_event: threading.Event,
-                 ws_port: int = 8081, https_port: int = 8443,
+                 ws_port: int = 8081, http_port: int = 8080,
+                 https_port: int = 8443,
                  verbose: bool = False):
         self.chunk_queue = chunk_queue
         self.stop_event = stop_event
         self.ws_port = ws_port
+        self.http_port = http_port
         self.https_port = https_port
         self.verbose = verbose
 
@@ -128,7 +130,8 @@ class PhoneMicServer:
 
     @property
     def pairing_url(self) -> str:
-        return f"https://{self._local_ip}:{self.https_port}/phone_mic.html?token={self._token}&ws_port={self.ws_port}"
+        """Use HTTP — HTTPS with self-signed certs is unreliable on mobile."""
+        return f"http://{self._local_ip}:{self.http_port}/phone_mic.html?token={self._token}&ws_port={self.ws_port}"
 
     def regenerate_token(self):
         self._token = secrets.token_urlsafe(16)
