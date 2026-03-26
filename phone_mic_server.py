@@ -37,10 +37,35 @@ def _ensure_imports():
 
 
 def get_local_ip() -> str:
-    """Get the machine's local network IP."""
+    """Get the machine's LAN IP, preferring 192.168.x.x over VPN/other ranges."""
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["ipconfig"], capture_output=True, text=True, timeout=5
+        )
+        # Collect all IPv4 addresses
+        ips = []
+        for line in result.stdout.split("\n"):
+            line = line.strip()
+            if "IPv4" in line and ":" in line:
+                ip = line.split(":")[-1].strip()
+                if ip and not ip.startswith("127."):
+                    ips.append(ip)
+        # Prefer common LAN ranges over VPN ranges
+        for ip in ips:
+            if ip.startswith("192.168."):
+                return ip
+        for ip in ips:
+            if ip.startswith("172.") or ip.startswith("10."):
+                return ip
+        if ips:
+            return ips[0]
+    except Exception:
+        pass
+    # Fallback
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("10.255.255.255", 1))
+        s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()
         return ip
