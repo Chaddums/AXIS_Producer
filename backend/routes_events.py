@@ -34,8 +34,6 @@ async def push_event(event: EventIn, user: dict = Depends(auth.get_current_user)
     if event.team_id not in user.get("teams", []):
         raise HTTPException(status_code=403, detail="Not a member of this team")
 
-    auth.require_active_subscription(event.team_id)
-
     res = db.client().table("events").insert({
         "team_id": event.team_id,
         "session_id": event.session_id,
@@ -66,9 +64,6 @@ async def push_events_batch(
     user_teams = set(user.get("teams", []))
     if not team_ids.issubset(user_teams):
         raise HTTPException(status_code=403, detail="Not a member of one or more teams")
-
-    for tid in team_ids:
-        auth.require_active_subscription(tid)
 
     rows = [{
         "team_id": e.team_id,
