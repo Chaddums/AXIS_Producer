@@ -442,11 +442,30 @@
 // ============================================================
 // Config
 // ============================================================
-const SUPABASE_URL = 'https://vktcojdvracuzwzeqisw.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_NAeW_rDUSS-oiM03p2JD5Q_IWWKPAmK';
+let SUPABASE_URL = '';
+let SUPABASE_KEY = '';
+let BACKEND_URL = '';
+let AUTH_TOKEN = '';
+let TEAM_ID = '';
 const POLL_MS = 5000;
 const MAX_EVENTS = 500;
 const PRESENCE_MS = 30000;
+
+// Load config — prefer backend API, fall back to hardcoded Supabase
+async function loadDashboardConfig() {
+  try {
+    const r = await fetch('/api/config');
+    const cfg = await r.json();
+    BACKEND_URL = cfg.backend_url || '';
+    AUTH_TOKEN = cfg.auth_token || '';
+    TEAM_ID = cfg.team_id || '';
+  } catch(e) {}
+  // If no backend, try legacy Supabase (for dev)
+  if (!BACKEND_URL) {
+    SUPABASE_URL = 'https://vktcojdvracuzwzeqisw.supabase.co';
+    SUPABASE_KEY = 'sb_publishable_NAeW_rDUSS-oiM03p2JD5Q_IWWKPAmK';
+  }
+}
 
 // ============================================================
 // State
@@ -463,14 +482,26 @@ let mediaRecorder = null;
 // User identity
 // ============================================================
 const userInput = document.getElementById('user-input');
-userInput.value = localStorage.getItem('axis_user') || '';
-if (!userInput.value) {
-  const name = prompt('Enter your name for AXIS:');
-  if (name) {
-    userInput.value = name.trim().toLowerCase();
-    localStorage.setItem('axis_user', userInput.value);
+// Load user identity from settings API first, fall back to localStorage
+(async () => {
+  try {
+    const r = await fetch('/api/config');
+    const cfg = await r.json();
+    if (cfg.user_identity && cfg.user_identity !== 'stu') {
+      userInput.value = cfg.user_identity;
+      localStorage.setItem('axis_user', cfg.user_identity);
+      return;
+    }
+  } catch(e) {}
+  userInput.value = localStorage.getItem('axis_user') || '';
+  if (!userInput.value) {
+    const name = prompt('Enter your name for AXIS:');
+    if (name) {
+      userInput.value = name.trim().toLowerCase();
+      localStorage.setItem('axis_user', userInput.value);
+    }
   }
-}
+})();
 userInput.addEventListener('change', () => {
   const v = userInput.value.trim().toLowerCase();
   if (v) localStorage.setItem('axis_user', v);
@@ -1181,8 +1212,20 @@ async function poll() {
 async function init() {
   const statusEl = document.getElementById('conn-status');
 
+  // Load config before anything else
+  await loadDashboardConfig();
+
   try {
-    const history = await sbQuery('events', 'order=id.desc&limit=300');
+    let history;
+    if (BACKEND_URL && AUTH_TOKEN && TEAM_ID) {
+      // Use backend API
+      const r = await fetch(`${BACKEND_URL}/events?team_id=${TEAM_ID}&limit=300`, {
+        headers: { 'Authorization': `Bearer ${AUTH_TOKEN}` },
+      });
+      history = r.ok ? await r.json() : [];
+    } else {
+      history = await sbQuery('events', 'order=id.desc&limit=300');
+    }
     if (history.length > 0) {
       allEvents = history;
       lastEventId = history[0].id;
