@@ -93,21 +93,21 @@ async def redeem_code(req: RedeemCodeRequest, user: dict = Depends(auth.get_curr
 @router.get("/check-promo")
 async def check_promo(code: str):
     """Check if a promo code is valid and return discount info. No auth required."""
+    import traceback
     try:
         promos = stripe.PromotionCode.list(code=code, active=True, limit=1)
-    except Exception:
-        return {"valid": False}
-
-    if not promos.data:
-        return {"valid": False}
-
-    coupon = promos.data[0].coupon
-    return {
-        "valid": True,
-        "percent_off": coupon.percent_off or 0,
-        "amount_off": coupon.amount_off or 0,
-        "duration": coupon.duration,
-    }
+        if not promos.data:
+            return {"valid": False}
+        coupon = promos.data[0].coupon
+        return {
+            "valid": True,
+            "percent_off": coupon.percent_off or 0,
+            "amount_off": coupon.amount_off or 0,
+            "duration": coupon.duration,
+        }
+    except Exception as e:
+        print(f"check-promo error: {traceback.format_exc()}")
+        return {"valid": False, "error": str(e)}
 
 
 @router.post("/checkout", response_model=CheckoutResponse)
