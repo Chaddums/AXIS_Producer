@@ -1538,59 +1538,72 @@ async function inviteFromAccount() {
   <div class="modal" style="max-width:520px;text-align:left;max-height:80vh;overflow-y:auto">
     <h2 style="margin-bottom:16px">Settings</h2>
 
-    <div style="font-size:12px;color:#64748b;margin-bottom:4px;margin-top:12px">Monitors</div>
+    <div style="font-size:12px;color:#64748b;margin-bottom:4px;margin-top:12px">What should AXIS monitor?</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
       <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin:0">
-        <input type="checkbox" id="cfg-slack"> Slack
-      </label>
-      <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin:0">
-        <input type="checkbox" id="cfg-email"> Email
+        <input type="checkbox" id="cfg-email"> Email (Outlook)
       </label>
       <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin:0">
         <input type="checkbox" id="cfg-calendar"> Calendar
       </label>
       <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin:0">
-        <input type="checkbox" id="cfg-vcs"> Git / VCS
+        <input type="checkbox" id="cfg-chat"> Clipboard / chat
+      </label>
+      <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin:0">
+        <input type="checkbox" id="cfg-vcs"> Code changes (Git)
       </label>
       <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin:0">
         <input type="checkbox" id="cfg-claude"> Claude Code
       </label>
-      <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin:0">
-        <input type="checkbox" id="cfg-chat"> Chat monitor
-      </label>
     </div>
 
-    <div style="font-size:12px;color:#64748b;margin-bottom:4px;margin-top:16px">Audio</div>
-    <label style="font-size:13px;margin:0">Whisper model</label>
-    <select id="cfg-whisper" style="width:100%;padding:6px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px;margin-top:4px">
-      <option value="tiny.en">Tiny (fastest, least accurate)</option>
-      <option value="base.en">Base (default)</option>
-      <option value="small.en">Small (better accuracy)</option>
-      <option value="medium.en">Medium (best local accuracy)</option>
+    <label style="font-size:12px;color:#64748b;margin-top:12px">Chat platform</label>
+    <select id="cfg-chat-platform" style="width:100%;padding:6px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px;margin-top:4px">
+      <option value="none">None</option>
+      <option value="slack">Slack</option>
+      <option value="discord">Discord</option>
+      <option value="teams">Microsoft Teams</option>
+      <option value="skype">Skype</option>
+      <option value="telegram">Telegram</option>
+      <option value="other">Other</option>
     </select>
 
-    <label style="font-size:13px;margin-top:8px">Batch interval (seconds)</label>
-    <input type="number" id="cfg-batch-interval" min="60" max="1800" step="30" style="width:100%;padding:6px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px;margin-top:4px">
+    <div style="font-size:12px;color:#64748b;margin-bottom:4px;margin-top:16px">Transcription quality</div>
+    <select id="cfg-whisper" style="width:100%;padding:6px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px">
+      <option value="tiny.en">Fast — quick results, may miss some words</option>
+      <option value="base.en">Balanced — good accuracy, moderate speed (default)</option>
+      <option value="small.en">Accurate — fewer errors, slower processing</option>
+      <option value="medium.en">Best — highest accuracy, requires more resources</option>
+    </select>
+
+    <label style="font-size:12px;color:#64748b;margin-top:12px">How often should AXIS summarize?</label>
+    <select id="cfg-batch-interval" style="width:100%;padding:6px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px;margin-top:4px">
+      <option value="120">Every 2 minutes</option>
+      <option value="300">Every 5 minutes (default)</option>
+      <option value="600">Every 10 minutes</option>
+      <option value="900">Every 15 minutes</option>
+      <option value="1800">Every 30 minutes</option>
+    </select>
 
     <div style="font-size:12px;color:#64748b;margin-bottom:4px;margin-top:16px">Notifications</div>
     <select id="cfg-notification" style="width:100%;padding:6px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px">
-      <option value="ambient">All (ambient and above)</option>
-      <option value="info">Info and above</option>
-      <option value="warning">Warning and critical only</option>
-      <option value="critical">Critical only</option>
+      <option value="ambient">Everything — all activity</option>
+      <option value="info">Standard — updates and above</option>
+      <option value="warning">Quiet — only alerts and urgent items</option>
+      <option value="critical">Minimal — only urgent items</option>
     </select>
 
     <div style="font-size:12px;color:#64748b;margin-bottom:4px;margin-top:16px">Privacy</div>
     <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin:0">
-      <input type="checkbox" id="cfg-cloud-sync"> Cloud sync
+      <input type="checkbox" id="cfg-cloud-sync"> Share activity with team (cloud sync)
     </label>
     <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin:4px 0 0 0">
-      <input type="checkbox" id="cfg-auto-detect"> Auto-detect speech on launch
+      <input type="checkbox" id="cfg-auto-detect"> Start listening automatically on launch
     </label>
 
-    <div style="font-size:12px;color:#64748b;margin-bottom:4px;margin-top:16px">Workspace</div>
-    <label style="font-size:13px;margin:0">Context (injected into AI prompt)</label>
-    <input type="text" id="cfg-ws-context" placeholder="e.g. 12-person veterinary clinic" style="width:100%;padding:6px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px;margin-top:4px">
+    <div style="font-size:12px;color:#64748b;margin-bottom:4px;margin-top:16px">About your team</div>
+    <label style="font-size:13px;margin:0">Help AXIS understand your context</label>
+    <input type="text" id="cfg-ws-context" placeholder="e.g. 12-person veterinary clinic, mostly in-person" style="width:100%;padding:6px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px;margin-top:4px">
 
     <div style="display:flex;gap:8px;margin-top:20px">
       <button class="close-btn" onclick="saveConfig()" style="background:#2563eb;border-color:#2563eb;color:#fff">Save</button>
@@ -1606,14 +1619,14 @@ async function showConfigPanel() {
   try {
     const r = await fetch('/api/config');
     const cfg = await r.json();
-    document.getElementById('cfg-slack').checked = cfg.slack_monitor || false;
     document.getElementById('cfg-email').checked = cfg.email_monitor || false;
     document.getElementById('cfg-calendar').checked = cfg.calendar_monitor || false;
     document.getElementById('cfg-vcs').checked = cfg.vcs_monitor || false;
     document.getElementById('cfg-claude').checked = cfg.claude_monitor || false;
     document.getElementById('cfg-chat').checked = cfg.chat_monitor || false;
+    document.getElementById('cfg-chat-platform').value = cfg.slack_monitor ? 'slack' : 'none';
     document.getElementById('cfg-whisper').value = cfg.whisper_model || 'base.en';
-    document.getElementById('cfg-batch-interval').value = cfg.batch_interval || 300;
+    document.getElementById('cfg-batch-interval').value = String(cfg.batch_interval || 300);
     document.getElementById('cfg-notification').value = cfg.notification_level || 'info';
     document.getElementById('cfg-cloud-sync').checked = cfg.cloud_sync || false;
     document.getElementById('cfg-auto-detect').checked = cfg.auto_detect !== false;
@@ -1636,7 +1649,7 @@ async function saveConfig() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        slack_monitor: document.getElementById('cfg-slack').checked,
+        slack_monitor: document.getElementById('cfg-chat-platform').value === 'slack',
         email_monitor: document.getElementById('cfg-email').checked,
         calendar_monitor: document.getElementById('cfg-calendar').checked,
         vcs_monitor: document.getElementById('cfg-vcs').checked,
