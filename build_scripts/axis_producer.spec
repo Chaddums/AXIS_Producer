@@ -8,11 +8,12 @@ project_dir = os.path.abspath('.')
 
 # Data files to include
 datas = [
-    ('dashboard.html', '.'),
-    ('nux.html', '.'),
-    ('phone_mic.html', '.'),
-    ('consent_notice.html', '.'),
-    ('favicon.ico', '.'),
+    ('static/dashboard.html', 'static'),
+    ('static/nux.html', 'static'),
+    ('static/phone_mic.html', 'static'),
+    ('static/consent_notice.html', 'static'),
+    ('static/favicon.ico', 'static'),
+    ('static/axis.ico', 'static'),
 ]
 
 # Hidden imports that PyInstaller misses
@@ -72,7 +73,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='axis.ico',
+    icon='static/axis.ico',
 )
 
 coll = COLLECT(

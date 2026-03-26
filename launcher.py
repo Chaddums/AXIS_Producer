@@ -76,7 +76,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             s = Settings.load()
             if not s.auth_token:
                 nux_path = os.path.join(
-                    os.path.dirname(os.path.abspath(__file__)), "nux.html")
+                    os.path.dirname(os.path.abspath(__file__)), "static", "nux.html")
                 if os.path.exists(nux_path):
                     self.send_response(302)
                     self.send_header("Location", "/nux.html")
@@ -86,7 +86,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if path == "/api/version":
             import hashlib
             dashboard_path = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "dashboard.html")
+                os.path.dirname(os.path.abspath(__file__)), "static", "dashboard.html")
             try:
                 with open(dashboard_path, "rb") as f:
                     h = hashlib.md5(f.read()).hexdigest()[:12]
@@ -348,7 +348,11 @@ def start_http_server(port: int = 8080, whisper_model: str = "base.en",
     Also starts an HTTPS server on https_port for getUserMedia on mobile.
     """
     project_dir = os.path.dirname(os.path.abspath(__file__))
-    os.chdir(project_dir)
+    static_dir = os.path.join(project_dir, "static")
+    if os.path.isdir(static_dir):
+        os.chdir(static_dir)
+    else:
+        os.chdir(project_dir)
 
     DashboardHandler.whisper_model = whisper_model
 
