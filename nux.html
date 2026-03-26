@@ -716,31 +716,42 @@ async function doMicCheck() {
   const result = document.getElementById('mic-result');
   const levelEl = document.getElementById('mic-level');
   btn.disabled = true;
-  label.textContent = 'Listening...';
+  label.textContent = 'Speak now...';
   result.textContent = '';
 
   try {
-    _micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    _micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    });
     _micCtx = new AudioContext();
     const source = _micCtx.createMediaStreamSource(_micStream);
     const analyser = _micCtx.createAnalyser();
     analyser.fftSize = 256;
     source.connect(analyser);
-    const data = new Uint8Array(analyser.frequencyBinCount);
+    const freqData = new Uint8Array(analyser.frequencyBinCount);
 
-    // Show levels for 5 seconds
     const start = Date.now();
     const recorder = new MediaRecorder(_micStream);
     const chunks = [];
     recorder.ondataavailable = e => chunks.push(e.data);
     recorder.start();
 
-    const interval = setInterval(() => {
-      analyser.getByteFrequencyData(data);
-      const avg = data.reduce((a,b) => a+b, 0) / data.length;
-      levelEl.style.width = Math.min(100, avg * 2) + '%';
+    let peakLevel = 0;
+    let speechFrames = 0;
+    const SPEECH_THRESHOLD = 15; // min avg frequency level to count as speech
 
-      if (Date.now() - start > 5000) {
+    const interval = setInterval(() => {
+      analyser.getByteFrequencyData(freqData);
+      const avg = freqData.reduce((a,b) => a+b, 0) / freqData.length;
+      levelEl.style.width = Math.min(100, avg * 2) + '%';
+      if (avg > peakLevel) peakLevel = avg;
+      if (avg > SPEECH_THRESHOLD) speechFrames++;
+
+      const elapsed = Date.now() - start;
+      const remaining = Math.ceil((5000 - elapsed) / 1000);
+      if (remaining > 0) label.textContent = `Speak now... ${remaining}s`;
+
+      if (elapsed > 5000) {
         clearInterval(interval);
         recorder.stop();
         _micStream.getTracks().forEach(t => t.stop());
@@ -750,6 +761,16 @@ async function doMicCheck() {
     }, 100);
 
     recorder.onstop = async () => {
+      // If no real speech detected (too quiet), skip transcription
+      if (speechFrames < 5) {
+        result.innerHTML = `<span style="color:#f59e0b">No speech detected.</span> Make sure your mic is connected and speak clearly.`;
+        label.textContent = 'No audio';
+        btn.disabled = false;
+        btn.textContent = 'Try Again';
+        document.getElementById('mic-next').disabled = false;
+        return;
+      }
+
       const blob = new Blob(chunks, { type: 'audio/webm' });
       const arrayBuf = await blob.arrayBuffer();
 
@@ -764,7 +785,7 @@ async function doMicCheck() {
           result.innerHTML = `<span style="color:#34d399">Pipeline verified.</span> Heard: "${data.text.trim()}"`;
           document.getElementById('mic-next').disabled = false;
         } else {
-          result.innerHTML = `<span style="color:#f59e0b">No speech detected.</span> Try again or skip.`;
+          result.innerHTML = `<span style="color:#f59e0b">Could not transcribe audio.</span> Try again or skip.`;
           document.getElementById('mic-next').disabled = false;
         }
       } catch(e) {
