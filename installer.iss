@@ -14,9 +14,9 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
-; TODO: UninstallDisplayIcon={app}\AXIS_Producer.exe
-SetupIconFile=
-LicenseFile=
+UninstallDisplayIcon={app}\AXIS_Producer.exe
+SetupIconFile=axis.ico
+AppPublisherURL=https://couloirgg.com
 
 [Dirs]
 Name: "{app}\logs"

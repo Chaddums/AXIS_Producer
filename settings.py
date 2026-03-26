@@ -4,7 +4,15 @@ import json
 import os
 from dataclasses import dataclass, field, asdict
 
-SETTINGS_PATH = os.path.join(os.path.dirname(__file__), "tray_settings.json")
+def _settings_dir():
+    """Get the directory for settings — handles PyInstaller bundles."""
+    if getattr(sys, 'frozen', False):
+        # PyInstaller: store settings next to the .exe, not inside _internal
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(__file__)
+
+import sys
+SETTINGS_PATH = os.path.join(_settings_dir(), "tray_settings.json")
 
 WORKSPACE_PRESETS = {
     "dev_team":      {"slack_monitor": True,  "vcs_monitor": True,  "calendar_monitor": True, "email_monitor": True,  "claude_monitor": True,  "privacy_preset": "standard"},

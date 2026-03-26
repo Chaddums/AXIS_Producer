@@ -12,6 +12,7 @@ datas = [
     ('nux.html', '.'),
     ('phone_mic.html', '.'),
     ('consent_notice.html', '.'),
+    ('favicon.ico', '.'),
 ]
 
 # Hidden imports that PyInstaller misses
@@ -71,6 +72,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='axis.ico',
 )
 
 coll = COLLECT(
