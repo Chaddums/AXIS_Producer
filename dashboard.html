@@ -1136,13 +1136,24 @@ async function sendPresence() {
   const who = getUser();
   if (!who || who === 'anon') return;
   try {
-    await sbInsert('events', {
+    const event = {
       who: who,
       stream: 'presence',
       event_type: 'presence',
       summary: 'online',
+      session_id: '',
       ts: new Date().toISOString()
-    });
+    };
+    if (BACKEND_URL && AUTH_TOKEN && TEAM_ID) {
+      event.team_id = TEAM_ID;
+      await fetch(`${BACKEND_URL}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${AUTH_TOKEN}` },
+        body: JSON.stringify(event),
+      });
+    } else {
+      await sbInsert('events', event);
+    }
   } catch (err) {
     console.error('Presence failed:', err);
   }
@@ -1153,7 +1164,15 @@ async function sendPresence() {
 // ============================================================
 async function poll() {
   try {
-    const events = await sbQuery('events', `id=gt.${lastEventId}&order=id.asc&limit=100`);
+    let events;
+    if (BACKEND_URL && AUTH_TOKEN && TEAM_ID) {
+      const r = await fetch(`${BACKEND_URL}/events?team_id=${TEAM_ID}&since_id=${lastEventId}&limit=100`, {
+        headers: { 'Authorization': `Bearer ${AUTH_TOKEN}` },
+      });
+      events = r.ok ? await r.json() : [];
+    } else {
+      events = await sbQuery('events', `id=gt.${lastEventId}&order=id.asc&limit=100`);
+    }
 
     if (events.length > 0) {
       lastEventId = Math.max(...events.map(e => e.id));
