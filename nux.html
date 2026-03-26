@@ -347,6 +347,7 @@
     <div class="mic-result" id="mic-result"></div>
     <div class="btn-row">
       <button class="btn" onclick="goStep(3)">Back</button>
+      <button class="btn" onclick="goStep(5)" style="color:#64748b">Skip</button>
       <button class="btn primary" onclick="goStep(5)" id="mic-next" disabled>Continue</button>
     </div>
   </div>
@@ -612,7 +613,12 @@ async function doCreateTeam() {
       });
       goStep(3);
     } else {
-      errEl.textContent = data.detail || 'Failed to create team';
+      const msg = data.detail || '';
+      if (msg.includes('duplicate') || msg.includes('already exists') || msg.includes('unique')) {
+        errEl.textContent = 'Team name already taken — choose a different name';
+      } else {
+        errEl.textContent = msg || 'Failed to create team';
+      }
     }
   } catch(e) {
     errEl.textContent = 'Could not reach server';
