@@ -1023,7 +1023,6 @@ async function sendThreadReply(parentId) {
   try {
     await apiChat(payload);
   } catch {
-    // Fallback: insert directly
     try {
       await sbInsert('events', {
         who: payload.who,
@@ -1035,13 +1034,28 @@ async function sendThreadReply(parentId) {
       });
     } catch (err2) {
       console.error('Thread reply failed:', err2);
+      return;
     }
   }
 
-  // Refresh thread
+  // Append reply inline instead of reloading the whole thread
   const container = document.getElementById('thread-' + parentId);
-  if (container) container.innerHTML = '';
-  toggleThread(parentId);
+  if (container) {
+    const inputRow = container.querySelector('.thread-input-row');
+    if (inputRow) {
+      // Remove "No replies yet" placeholder if present
+      const placeholder = container.querySelector('.thread-panel > div[style*="color:#64748b"]');
+      if (placeholder && placeholder.textContent.includes('No replies')) placeholder.remove();
+
+      const replyHtml = `<div class="event new" style="padding-left:24px;">
+        <span class="event-time">${timeStr(payload.ts)}</span>
+        <span class="event-who ${whoColor(payload.who)}">${escapeHtml(payload.who)}</span>
+        <div class="event-body"><div class="event-summary">${escapeHtml(text)}</div></div>
+      </div>`;
+      inputRow.insertAdjacentHTML('beforebegin', replyHtml);
+    }
+  }
+  inp.focus();
 }
 
 // ============================================================
