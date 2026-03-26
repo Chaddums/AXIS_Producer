@@ -634,7 +634,7 @@ async function doSetWorkspace() {
   if (!state.workspaceType) { errEl.textContent = 'Pick a workspace type'; return; }
 
   try {
-    await fetch(state.backendUrl + `/teams/${state.teamId}/config`, {
+    const resp = await fetch(state.backendUrl + `/teams/${state.teamId}/config`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -646,6 +646,11 @@ async function doSetWorkspace() {
         privacy_preset: state.workspaceType === 'healthcare' ? 'hipaa_aware' : 'standard',
       }),
     });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      errEl.textContent = err.detail || `Server error (${resp.status})`;
+      return;
+    }
 
     // Apply preset locally
     const presetSettings = { workspace_type: state.workspaceType, workspace_context: context };
