@@ -1285,13 +1285,14 @@ class TrayApp:
         # Start tkinter thread
         self._tk_thread.start()
 
-        # Auto-start detection if configured
-        if self.settings.auto_detect:
+        # Auto-start detection if configured (skip during NUX — no auth yet)
+        if self.settings.auto_detect and self.settings.auth_token:
             # Small delay to let icon appear first
             threading.Timer(1.0, self.controller.start_detecting).start()
 
-        # Start briefing scheduler (always-on, independent of recording)
-        threading.Timer(2.0, self.controller.start_briefings).start()
+        # Start briefing scheduler only if authenticated
+        if self.settings.auth_token:
+            threading.Timer(2.0, self.controller.start_briefings).start()
 
         # Start cloud services (Claude monitor + cloud sync, always-on)
         threading.Timer(3.0, self.controller.start_cloud_services).start()
