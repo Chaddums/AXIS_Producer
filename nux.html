@@ -311,12 +311,12 @@
     <h2 id="ws-heading">What kind of team?</h2>
     <div class="workspace-cards" style="margin-top:16px">
       <div class="ws-card" onclick="pickWorkspace('dev_team')" id="ws-dev_team">
-        <h3>Dev Team</h3>
-        <p>Slack, VCS, calendar, email, Claude Code monitoring</p>
+        <h3>Engineering</h3>
+        <p>Git, Slack, calendar, email, Claude Code monitoring</p>
       </div>
       <div class="ws-card" onclick="pickWorkspace('business_team')" id="ws-business_team">
-        <h3>Business Team</h3>
-        <p>Slack, calendar, email. No code monitoring.</p>
+        <h3>Operations</h3>
+        <p>Slack, calendar, email. No code tools.</p>
       </div>
       <div class="ws-card" onclick="pickWorkspace('healthcare')" id="ws-healthcare">
         <h3>Healthcare / Clinic</h3>
@@ -845,6 +845,27 @@ async function doBilling() {
   errEl.textContent = '';
 
   try {
+    // If there's a promo code, try to redeem it directly (skips Stripe for 100% off)
+    if (promo) {
+      const redeem = await api('/billing/redeem-code', {
+        team_id: state.teamId,
+        promo_code: promo,
+        tier: state.tier,
+      });
+      if (redeem.redeemed) {
+        goStep(8);
+        return;
+      }
+      // If code exists but isn't 100% off, fall through to checkout
+      if (redeem.detail === 'This code requires checkout') {
+        // Continue to Stripe with the code
+      } else if (redeem.detail) {
+        errEl.textContent = redeem.detail;
+        return;
+      }
+    }
+
+    // Stripe checkout (paid plans or partial discount codes)
     const payload = {
       tier: state.tier,
       team_id: state.teamId,
@@ -853,9 +874,7 @@ async function doBilling() {
 
     const data = await api('/billing/checkout', payload);
     if (data.checkout_url) {
-      // Open Stripe checkout in new tab
       window.open(data.checkout_url, '_blank');
-      // Move to done step — they'll complete billing in the new tab
       goStep(8);
     } else {
       errEl.textContent = data.detail || data._detail || 'Billing setup failed';

@@ -40,6 +40,44 @@ class CheckoutResponse(BaseModel):
     session_id: str
 
 
+class RedeemCodeRequest(BaseModel):
+    team_id: str
+    promo_code: str
+    tier: str = "team"
+
+
+@router.post("/redeem-code")
+async def redeem_code(req: RedeemCodeRequest, user: dict = Depends(auth.get_current_user)):
+    """Redeem a 100%-off promo code without going through Stripe checkout."""
+    if req.team_id not in user.get("teams", []):
+        raise HTTPException(status_code=403, detail="Not a member of this team")
+
+    # Look up promotion code in Stripe
+    promos = stripe.PromotionCode.list(code=req.promo_code, active=True, limit=1)
+    if not promos.data:
+        raise HTTPException(status_code=400, detail="Invalid code")
+
+    promo = promos.data[0]
+    coupon = promo.coupon
+
+    # Only allow this path for 100% off coupons
+    if not (coupon.percent_off == 100):
+        raise HTTPException(status_code=400, detail="This code requires checkout")
+
+    # Create a free subscription record directly (no Stripe subscription needed)
+    db.create_subscription(
+        team_id=req.team_id,
+        stripe_customer_id=f"free_{user['sub']}",
+        stripe_subscription_id=f"free_{req.team_id}_{req.promo_code}",
+        tier=req.tier,
+        status="active",
+        current_period_end=None,
+        seats=20 if req.tier == "team" else 1,
+    )
+
+    return {"redeemed": True, "tier": req.tier, "status": "active"}
+
+
 @router.post("/checkout", response_model=CheckoutResponse)
 async def create_checkout(req: CheckoutRequest, user: dict = Depends(auth.get_current_user)):
     if req.team_id not in user.get("teams", []):
