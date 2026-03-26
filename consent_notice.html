@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AXIS — Recording Consent Notice</title>
+<style>
+  @media print {
+    body { margin: 0; }
+    .no-print { display: none; }
+  }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    max-width: 700px;
+    margin: 40px auto;
+    padding: 20px;
+    color: #1a1a1a;
+    line-height: 1.6;
+  }
+  .notice-card {
+    border: 3px solid #1e293b;
+    border-radius: 12px;
+    padding: 32px;
+    margin-bottom: 40px;
+  }
+  .notice-card h1 {
+    font-size: 22px;
+    margin: 0 0 4px 0;
+    color: #0f172a;
+  }
+  .notice-card .subtitle {
+    font-size: 13px;
+    color: #64748b;
+    margin-bottom: 20px;
+  }
+  .notice-card h2 {
+    font-size: 16px;
+    margin: 16px 0 8px 0;
+    color: #0f172a;
+  }
+  .notice-card p, .notice-card li {
+    font-size: 14px;
+    color: #334155;
+  }
+  .notice-card ul {
+    padding-left: 20px;
+    margin: 8px 0;
+  }
+  .notice-card .highlight {
+    background: #f1f5f9;
+    border-left: 4px solid #2563eb;
+    padding: 12px 16px;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  .room-sign {
+    border: 4px solid #0f172a;
+    border-radius: 12px;
+    padding: 40px;
+    text-align: center;
+    page-break-before: always;
+  }
+  .room-sign h1 {
+    font-size: 28px;
+    margin: 0 0 16px 0;
+  }
+  .room-sign p {
+    font-size: 18px;
+    color: #334155;
+    margin: 8px 0;
+  }
+  .room-sign .icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+  }
+  .room-sign .small {
+    font-size: 12px;
+    color: #94a3b8;
+    margin-top: 24px;
+  }
+  .no-print {
+    text-align: center;
+    margin: 20px 0;
+  }
+  .no-print button {
+    padding: 10px 24px;
+    font-size: 14px;
+    background: #2563eb;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .no-print button:hover { background: #1d4ed8; }
+</style>
+</head>
+<body>
+
+<div class="no-print">
+  <button onclick="window.print()">Print This Page</button>
+  <p style="font-size:12px;color:#94a3b8;margin-top:8px">Prints both the detailed notice and the room sign</p>
+</div>
+
+<!-- Detailed Notice -->
+<div class="notice-card">
+  <h1>Audio Recording & AI Analysis Notice</h1>
+  <div class="subtitle">Required under Washington State two-party consent law (RCW 9.73.030)</div>
+
+  <div class="highlight">
+    This workspace uses <strong>AXIS</strong>, an ambient audio recording and AI analysis system.
+    By remaining in this area, you acknowledge that conversations may be recorded and processed.
+  </div>
+
+  <h2>What is recorded</h2>
+  <ul>
+    <li>Ambient audio from microphones in the workspace</li>
+    <li>Conversations are transcribed using local speech-to-text software</li>
+    <li>Transcripts are analyzed by AI to produce structured meeting notes</li>
+  </ul>
+
+  <h2>What is NOT recorded</h2>
+  <ul>
+    <li>Video or images — audio only</li>
+    <li>Personal devices, phone calls, or communications outside this workspace</li>
+    <li>Content is never used for employee surveillance or performance evaluation</li>
+  </ul>
+
+  <h2>How data is handled</h2>
+  <ul>
+    <li>Audio is processed locally and is not stored after transcription</li>
+    <li>AI-generated summaries are the only output retained</li>
+    <li>Summaries are shared with the team — there are no hidden records</li>
+    <li>All output includes a disclaimer: "AI-generated summary. Not a verbatim transcript."</li>
+  </ul>
+
+  <h2>Your rights</h2>
+  <ul>
+    <li>You may request that recording be paused during sensitive conversations</li>
+    <li>You may ask to see any session notes that include your contributions</li>
+    <li>If you do not consent, please notify your team lead before the session begins</li>
+  </ul>
+
+  <h2>Contact</h2>
+  <p>Questions about this system can be directed to the team administrator.</p>
+
+  <p style="font-size:11px;color:#94a3b8;margin-top:24px">
+    AXIS is a product of CouloirGG LLC. This notice is provided to comply with Washington State
+    two-party consent requirements. This notice does not constitute legal advice. Organizations
+    are responsible for ensuring their use of AXIS complies with all applicable laws.
+  </p>
+</div>
+
+<!-- Printable Room Sign -->
+<div class="room-sign">
+  <div class="icon">&#127908;</div>
+  <h1>Audio Recording In Use</h1>
+  <p>This workspace uses <strong>AXIS</strong> for ambient session recording.</p>
+  <p>Conversations are recorded, transcribed, and summarized by AI.</p>
+  <p>Audio is processed locally and not stored. Only AI-generated notes are retained.</p>
+  <p style="margin-top:24px"><strong>If you do not consent to recording, please notify the team lead.</strong></p>
+  <div class="small">
+    Required under Washington State RCW 9.73.030 (two-party consent).<br>
+    AXIS by CouloirGG LLC. AI-generated summaries are not verbatim transcripts.
+  </div>
+</div>
+
+</body>
+</html>
