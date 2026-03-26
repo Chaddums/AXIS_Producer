@@ -250,7 +250,8 @@
     <label>Email</label>
     <input type="email" id="signup-email" placeholder="you@company.com">
     <label>Password</label>
-    <input type="password" id="signup-password" placeholder="8+ characters">
+    <input type="password" id="signup-password" placeholder="8+ characters" oninput="checkPwStrength()">
+    <div id="pw-strength" style="font-size:11px;margin-top:4px;height:14px"></div>
     <label>Your name</label>
     <input type="text" id="signup-name" placeholder="First Last">
     <label>Organization (optional)</label>
@@ -505,6 +506,21 @@ async function saveSettings(updates) {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(updates),
   });
+}
+
+function checkPwStrength() {
+  const pw = document.getElementById('signup-password').value;
+  const el = document.getElementById('pw-strength');
+  if (!pw) { el.textContent = ''; return; }
+  if (pw.length < 8) { el.innerHTML = '<span style="color:#f87171">Too short</span>'; return; }
+  const hasUpper = /[A-Z]/.test(pw);
+  const hasLower = /[a-z]/.test(pw);
+  const hasDigit = /[0-9]/.test(pw);
+  const hasSpecial = /[^A-Za-z0-9]/.test(pw);
+  const kinds = [hasUpper, hasLower, hasDigit, hasSpecial].filter(Boolean).length;
+  if (kinds < 2) { el.innerHTML = '<span style="color:#f87171">Add uppercase, lowercase, or numbers</span>'; return; }
+  if (kinds === 2 && pw.length < 10) { el.innerHTML = '<span style="color:#f59e0b">OK</span>'; return; }
+  el.innerHTML = '<span style="color:#34d399">Strong</span>';
 }
 
 // Step 1: Signup

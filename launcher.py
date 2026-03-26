@@ -184,17 +184,15 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._json_response({"error": str(e)}, 500)
 
     def _handle_chat(self):
-        """Receive a chat message and post to Supabase."""
+        """Receive a chat message and post via backend API (or direct Supabase fallback)."""
         try:
             content_length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(content_length))
 
-            from cloud_db import CloudDB
             from settings import Settings
             settings = Settings.load()
 
-            db = CloudDB(settings.supabase_url, settings.supabase_key)
-            result = db.insert_event({
+            event = {
                 "ts": body.get("ts", ""),
                 "who": body.get("who", settings.user_identity),
                 "stream": body.get("stream", "chat"),
@@ -206,9 +204,21 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "raw": body.get("raw", {}),
                 "project": body.get("project"),
                 "parent_id": body.get("parent_id"),
-            })
+            }
 
-            self._json_response({"ok": True, "event": result})
+            if settings.backend_url and settings.auth_token and settings.team_id:
+                from backend_client import BackendClient
+                client = BackendClient(settings.backend_url, settings.auth_token)
+                event["team_id"] = settings.team_id
+                count = client.push_events([event])
+                self._json_response({"ok": count > 0})
+            elif settings.supabase_url and settings.supabase_key:
+                from cloud_db import CloudDB
+                db = CloudDB(settings.supabase_url, settings.supabase_key)
+                result = db.insert_event(event)
+                self._json_response({"ok": True, "event": result})
+            else:
+                self._json_response({"error": "No backend or Supabase configured"}, 503)
 
         except Exception as e:
             self._json_response({"error": str(e)}, 500)

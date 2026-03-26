@@ -17,6 +17,23 @@ from prohibited_use import check_email_domain, scan_org_name, log_attestation, f
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _check_password_strength(password: str) -> str | None:
+    """Return error message if password is too weak, None if OK."""
+    if len(password) < 8:
+        return "Password must be at least 8 characters"
+    if password.lower() in {"password", "12345678", "password1", "qwerty123",
+                             "abcdefgh", "letmein1", "admin123", "welcome1",
+                             "changeme", "iloveyou"}:
+        return "Password is too common"
+    has_upper = any(c.isupper() for c in password)
+    has_lower = any(c.islower() for c in password)
+    has_digit = any(c.isdigit() for c in password)
+    kinds = sum([has_upper, has_lower, has_digit])
+    if kinds < 2:
+        return "Password must include at least two of: uppercase, lowercase, numbers"
+    return None
+
+
 class SignupRequest(BaseModel):
     email: EmailStr
     password: str
@@ -57,6 +74,11 @@ class RefreshRequest(BaseModel):
 @router.post("/signup", response_model=TokenResponse)
 @limiter.limit("5/hour")
 async def signup(req: SignupRequest, request: Request):
+    # Password strength
+    pwd_error = _check_password_strength(req.password)
+    if pwd_error:
+        raise HTTPException(status_code=400, detail=pwd_error)
+
     # Prohibited use: block known government domains
     if check_email_domain(req.email):
         raise HTTPException(status_code=400, detail="Unable to create account")
