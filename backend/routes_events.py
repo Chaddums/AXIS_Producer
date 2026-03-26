@@ -20,6 +20,7 @@ class EventIn(BaseModel):
     summary: str = ""
     raw: dict = {}
     project: str | None = None
+    parent_id: int | None = None
 
 
 class SynthesisIn(BaseModel):
@@ -34,7 +35,7 @@ async def push_event(event: EventIn, user: dict = Depends(auth.get_current_user)
     if event.team_id not in user.get("teams", []):
         raise HTTPException(status_code=403, detail="Not a member of this team")
 
-    res = db.client().table("events").insert({
+    row = {
         "team_id": event.team_id,
         "session_id": event.session_id,
         "stream": event.stream,
@@ -45,7 +46,11 @@ async def push_event(event: EventIn, user: dict = Depends(auth.get_current_user)
         "summary": event.summary,
         "raw": event.raw,
         "project": event.project,
-    }).execute()
+    }
+    if event.parent_id:
+        row["parent_id"] = event.parent_id
+
+    res = db.client().table("events").insert(row).execute()
 
     return {"ok": True, "id": res.data[0]["id"] if res.data else None}
 
@@ -65,18 +70,23 @@ async def push_events_batch(
     if not team_ids.issubset(user_teams):
         raise HTTPException(status_code=403, detail="Not a member of one or more teams")
 
-    rows = [{
-        "team_id": e.team_id,
-        "session_id": e.session_id,
-        "stream": e.stream,
-        "event_type": e.event_type,
-        "who": e.who,
-        "area": e.area,
-        "files": e.files,
-        "summary": e.summary,
-        "raw": e.raw,
-        "project": e.project,
-    } for e in events]
+    rows = []
+    for e in events:
+        row = {
+            "team_id": e.team_id,
+            "session_id": e.session_id,
+            "stream": e.stream,
+            "event_type": e.event_type,
+            "who": e.who,
+            "area": e.area,
+            "files": e.files,
+            "summary": e.summary,
+            "raw": e.raw,
+            "project": e.project,
+        }
+        if e.parent_id:
+            row["parent_id"] = e.parent_id
+        rows.append(row)
 
     res = db.client().table("events").insert(rows).execute()
     return {"ok": True, "count": len(res.data) if res.data else 0}
