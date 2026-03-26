@@ -270,6 +270,23 @@
     </div>
   </div>
 
+  <!-- Step 1c: Email Verification -->
+  <div class="step" id="step-verify" data-title="Verify Email">
+    <h2>Verify your email</h2>
+    <p class="info" style="margin-top:0">We sent a verification code to your email. Enter it below.</p>
+    <div id="verify-hint" style="background:#0a0f1a;border:1px solid #334155;border-radius:6px;padding:12px;margin:12px 0;font-size:12px;color:#64748b;display:none">
+      <div style="color:#f59e0b;margin-bottom:4px">Email not set up yet — here's your code:</div>
+      <div id="verify-code-display" style="font-family:monospace;font-size:18px;color:#4ac0ff;user-select:all"></div>
+    </div>
+    <label>Verification code</label>
+    <input type="text" id="verify-code-input" placeholder="Paste your code">
+    <div class="error" id="verify-error"></div>
+    <div class="btn-row">
+      <span></span>
+      <button class="btn primary" onclick="doVerifyEmail()">Verify</button>
+    </div>
+  </div>
+
   <!-- Step 1b: Login (hidden by default) -->
   <div class="step" id="step-login" data-title="Log In">
     <h2>Log in</h2>
@@ -534,6 +551,25 @@ function checkPwStrength() {
   el.innerHTML = '<span style="color:#34d399">Strong</span>';
 }
 
+async function doVerifyEmail() {
+  const code = document.getElementById('verify-code-input').value.trim();
+  const errEl = document.getElementById('verify-error');
+  errEl.textContent = '';
+
+  if (!code) { errEl.textContent = 'Enter the verification code'; return; }
+
+  try {
+    const data = await api('/auth/verify-email', { token: code });
+    if (data.verified) {
+      goStep(2);
+    } else {
+      errEl.textContent = data.detail || 'Invalid or expired code';
+    }
+  } catch(e) {
+    errEl.textContent = 'Could not reach server';
+  }
+}
+
 // Step 1: Signup
 async function doSignup() {
   const email = document.getElementById('signup-email').value.trim();
@@ -555,16 +591,23 @@ async function doSignup() {
     if (data.token) {
       state.token = data.token;
       state.userId = data.user_id;
+      state.verifyToken = data.verify_token || '';
       await saveSettings({
         auth_token: data.token,
         user_id: data.user_id,
         user_identity: name,
         backend_url: state.backendUrl,
-        // Clear any stale data from previous installs
         team_id: '',
         cloud_sync: false,
       });
-      goStep(2);
+      // Show verification step
+      document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+      document.getElementById('step-verify').classList.add('active');
+      // Show code hint until email service is wired
+      if (state.verifyToken) {
+        document.getElementById('verify-hint').style.display = 'block';
+        document.getElementById('verify-code-display').textContent = state.verifyToken;
+      }
     } else {
       errEl.textContent = data.detail || data._detail || 'Signup failed';
     }

@@ -52,6 +52,7 @@ class TokenResponse(BaseModel):
     user_id: str
     teams: list[str]
     email_verified: bool = False
+    verify_token: str | None = None  # returned during signup, removed once email service is wired
 
 
 class VerifyEmailRequest(BaseModel):
@@ -111,11 +112,13 @@ async def signup(req: SignupRequest, request: Request):
     db.create_email_verification(user["id"], verify_token, expires)
 
     token = auth.create_token(user["id"], [])
+    # TODO: send verify_token via email (Resend/SES) instead of returning it
     return TokenResponse(
         token=token,
         user_id=user["id"],
         teams=[],
         email_verified=False,
+        verify_token=verify_token,
     )
 
 

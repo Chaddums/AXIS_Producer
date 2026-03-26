@@ -32,6 +32,10 @@ class JoinRequest(BaseModel):
 
 @router.post("", response_model=TeamResponse)
 async def create_team(req: CreateTeamRequest, user: dict = Depends(auth.get_current_user)):
+    # Require email verification
+    db_user = db.get_user_by_id(user["sub"])
+    if db_user and not db_user.get("email_verified"):
+        raise HTTPException(status_code=403, detail="Email verification required")
     team = db.create_team(req.name, user["sub"])
     if not team:
         raise HTTPException(status_code=500, detail="Failed to create team")
