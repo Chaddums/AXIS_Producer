@@ -37,6 +37,25 @@ async def create_team(req: CreateTeamRequest, user: dict = Depends(auth.get_curr
         raise HTTPException(status_code=500, detail="Failed to create team")
 
     db.add_team_member(team["id"], user["sub"], role="owner")
+
+    # Welcome event — first thing in the feed
+    db_user = db.get_user_by_id(user["sub"])
+    who = db_user["name"] if db_user else "Someone"
+    from datetime import datetime, timezone
+    db.client().table("events").insert({
+        "team_id": team["id"],
+        "session_id": "",
+        "stream": "system",
+        "event_type": "team_created",
+        "who": who,
+        "area": None,
+        "files": [],
+        "summary": f"{who} created workspace \"{req.name}\"",
+        "raw": {},
+        "project": None,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }).execute()
+
     return TeamResponse(id=team["id"], name=team["name"], owner_id=team["owner_id"])
 
 
@@ -76,6 +95,25 @@ async def join_team(req: JoinRequest, user: dict = Depends(auth.get_current_user
     db.mark_invite_used(invite["id"], user["sub"])
 
     team = db.get_team(invite["team_id"])
+
+    # Join event
+    db_user = db.get_user_by_id(user["sub"])
+    who = db_user["name"] if db_user else "Someone"
+    from datetime import datetime, timezone
+    db.client().table("events").insert({
+        "team_id": invite["team_id"],
+        "session_id": "",
+        "stream": "system",
+        "event_type": "member_joined",
+        "who": who,
+        "area": None,
+        "files": [],
+        "summary": f"{who} joined the workspace",
+        "raw": {},
+        "project": None,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }).execute()
+
     return {"team_id": invite["team_id"], "team_name": team["name"] if team else ""}
 
 
