@@ -52,8 +52,12 @@ async def redeem_code(req: RedeemCodeRequest, user: dict = Depends(auth.get_curr
     if req.team_id not in user.get("teams", []):
         raise HTTPException(status_code=403, detail="Not a member of this team")
 
-    # Look up promotion code in Stripe
-    promos = stripe.PromotionCode.list(code=req.promo_code, active=True, limit=1)
+    try:
+        # Look up promotion code in Stripe
+        promos = stripe.PromotionCode.list(code=req.promo_code, active=True, limit=1)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Stripe error: {e}")
+
     if not promos.data:
         raise HTTPException(status_code=400, detail="Invalid code")
 
@@ -64,18 +68,46 @@ async def redeem_code(req: RedeemCodeRequest, user: dict = Depends(auth.get_curr
     if not (coupon.percent_off == 100):
         raise HTTPException(status_code=400, detail="This code requires checkout")
 
+    # Check if subscription already exists for this team
+    existing = db.get_subscription_by_team(req.team_id)
+    if existing:
+        return {"redeemed": True, "tier": existing["tier"], "status": existing["status"]}
+
     # Create a free subscription record directly (no Stripe subscription needed)
-    db.create_subscription(
-        team_id=req.team_id,
-        stripe_customer_id=f"free_{user['sub']}",
-        stripe_subscription_id=f"free_{req.team_id}_{req.promo_code}",
-        tier=req.tier,
-        status="active",
-        current_period_end=None,
-        seats=20 if req.tier == "team" else 1,
-    )
+    try:
+        db.create_subscription(
+            team_id=req.team_id,
+            stripe_customer_id=f"free_{user['sub']}",
+            stripe_subscription_id=f"free_{req.team_id}_{req.promo_code}",
+            tier=req.tier,
+            status="active",
+            current_period_end=None,
+            seats=20 if req.tier == "team" else 1,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create subscription: {e}")
 
     return {"redeemed": True, "tier": req.tier, "status": "active"}
+
+
+@router.get("/check-promo")
+async def check_promo(code: str):
+    """Check if a promo code is valid and return discount info. No auth required."""
+    try:
+        promos = stripe.PromotionCode.list(code=code, active=True, limit=1)
+    except Exception:
+        return {"valid": False}
+
+    if not promos.data:
+        return {"valid": False}
+
+    coupon = promos.data[0].coupon
+    return {
+        "valid": True,
+        "percent_off": coupon.percent_off or 0,
+        "amount_off": coupon.amount_off or 0,
+        "duration": coupon.duration,
+    }
 
 
 @router.post("/checkout", response_model=CheckoutResponse)

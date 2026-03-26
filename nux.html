@@ -396,7 +396,8 @@
       </div>
     </div>
     <label>Promo code (optional)</label>
-    <input type="text" id="promo-code" placeholder="e.g. VETCLINIC2026">
+    <input type="text" id="promo-code" placeholder="e.g. VC2026" oninput="checkPromoCode()">
+    <div id="promo-preview" style="font-size:12px;margin-top:4px;height:14px"></div>
     <div class="error" id="billing-error"></div>
     <div class="btn-row">
       <button class="btn" onclick="goStep(6)">Back</button>
@@ -837,6 +838,34 @@ function pickTier(tier) {
   state.tier = tier;
   document.getElementById('tier-team').classList.toggle('selected', tier === 'team');
   document.getElementById('tier-pro').classList.toggle('selected', tier === 'pro');
+}
+
+let _promoTimer = null;
+function checkPromoCode() {
+  const code = document.getElementById('promo-code').value.trim();
+  const el = document.getElementById('promo-preview');
+  if (!code) { el.textContent = ''; return; }
+  clearTimeout(_promoTimer);
+  _promoTimer = setTimeout(async () => {
+    try {
+      const r = await fetch(state.backendUrl + '/billing/check-promo?code=' + encodeURIComponent(code));
+      const data = await r.json();
+      if (data.valid) {
+        const price = state.tier === 'team' ? 49.99 : 24.99;
+        const discount = data.percent_off || 0;
+        const final_price = (price * (100 - discount) / 100).toFixed(2);
+        if (discount === 100) {
+          el.innerHTML = `<span style="color:#34d399">Free forever</span>`;
+        } else {
+          el.innerHTML = `<span style="color:#34d399">${discount}% off — $${final_price}/mo</span>`;
+        }
+      } else {
+        el.innerHTML = `<span style="color:#f87171">Invalid code</span>`;
+      }
+    } catch(e) {
+      el.textContent = '';
+    }
+  }, 500);
 }
 
 async function doBilling() {
