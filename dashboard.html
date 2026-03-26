@@ -536,6 +536,35 @@ function playBeep() {
 // Supabase REST
 // ============================================================
 async function sbQuery(table, params = '') {
+  // Route through backend when authenticated
+  if (BACKEND_URL && AUTH_TOKEN && TEAM_ID && table === 'events') {
+    // Parse PostgREST-style params into backend query params
+    const backendParams = new URLSearchParams({ team_id: TEAM_ID, limit: '100' });
+    const idMatch = params.match(/id=gt\.(\d+)/);
+    if (idMatch) backendParams.set('since_id', idMatch[1]);
+    const parentMatch = params.match(/parent_id=eq\.(\d+)/);
+    if (parentMatch) {
+      // Thread replies — fetch all events and filter client-side
+      const r = await fetch(`${BACKEND_URL}/events?${backendParams}`, {
+        headers: { 'Authorization': `Bearer ${AUTH_TOKEN}` },
+      });
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      const all = await r.json();
+      return all.filter(e => String(e.parent_id) === parentMatch[1]);
+    }
+    const orderDesc = params.includes('order=id.desc') || params.includes('order=ts.desc');
+    const limitMatch = params.match(/limit=(\d+)/);
+    if (limitMatch) backendParams.set('limit', limitMatch[1]);
+    const r = await fetch(`${BACKEND_URL}/events?${backendParams}`, {
+      headers: { 'Authorization': `Bearer ${AUTH_TOKEN}` },
+    });
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    const data = await r.json();
+    if (orderDesc) data.reverse();
+    return data;
+  }
+  // Legacy Supabase direct
+  if (!SUPABASE_URL) throw new Error('No backend configured');
   const url = `${SUPABASE_URL}/rest/v1/${table}?${params}`;
   const resp = await fetch(url, {
     headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
@@ -545,6 +574,20 @@ async function sbQuery(table, params = '') {
 }
 
 async function sbInsert(table, data) {
+  // Route through backend when authenticated
+  if (BACKEND_URL && AUTH_TOKEN && TEAM_ID && table === 'events') {
+    if (!data.team_id) data.team_id = TEAM_ID;
+    if (!data.session_id) data.session_id = '';
+    const r = await fetch(`${BACKEND_URL}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${AUTH_TOKEN}` },
+      body: JSON.stringify(data),
+    });
+    if (!r.ok) throw new Error(`Insert failed: ${r.status}`);
+    return r.json();
+  }
+  // Legacy Supabase direct
+  if (!SUPABASE_URL) throw new Error('No backend configured');
   const url = `${SUPABASE_URL}/rest/v1/${table}`;
   const resp = await fetch(url, {
     method: 'POST',
