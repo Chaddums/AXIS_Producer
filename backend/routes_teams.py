@@ -76,6 +76,21 @@ async def list_teams(user: dict = Depends(auth.get_current_user)):
     ]
 
 
+@router.get("/{team_id}/config")
+async def get_team_config(team_id: str, user: dict = Depends(auth.get_current_user)):
+    if team_id not in user.get("teams", []):
+        raise HTTPException(status_code=403, detail="Not a member of this team")
+    team = db.get_team(team_id)
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    return {
+        "workspace_type": team.get("workspace_type", "custom"),
+        "workspace_context": team.get("workspace_context", ""),
+        "privacy_preset": team.get("privacy_preset", "standard"),
+        "output_terminology": team.get("output_terminology", {}),
+    }
+
+
 @router.post("/{team_id}/invite", response_model=InviteResponse)
 async def create_invite(team_id: str, user: dict = Depends(auth.get_current_user)):
     if team_id not in user.get("teams", []):

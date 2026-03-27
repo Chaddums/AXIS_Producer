@@ -222,14 +222,46 @@
 
 <!-- Settings -->
 <div class="panel-page" id="page-settings">
-  <div class="section-title">Account</div>
+  <div class="section-title">Workspace</div>
   <div class="settings-row">
-    <span class="settings-label">Workspace</span>
-    <span class="settings-value" id="s-workspace">—</span>
+    <span class="settings-label">Type</span>
+    <span class="settings-value" id="s-ws-type">—</span>
   </div>
   <div class="settings-row">
-    <span class="settings-label">Privacy</span>
+    <span class="settings-label">Context</span>
+    <span class="settings-value" id="s-ws-context">—</span>
+  </div>
+  <div class="settings-row">
+    <span class="settings-label">Privacy level</span>
     <span class="settings-value" id="s-privacy">—</span>
+  </div>
+
+  <div class="section-title">AI Analysis</div>
+  <div class="settings-row">
+    <span class="settings-label">Provider</span>
+    <span class="settings-value" id="s-llm">—</span>
+  </div>
+
+  <div class="section-title" style="margin-top:20px">Edit Workspace</div>
+  <div style="background:#111827;border:1px solid #1e293b;border-radius:8px;padding:14px">
+    <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px">Workspace type</label>
+    <select id="s-edit-ws-type" style="width:100%;padding:6px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px;font-family:inherit">
+      <option value="dev_team">Engineering</option>
+      <option value="business_team">Operations</option>
+      <option value="healthcare">Healthcare / Clinic</option>
+      <option value="agency">Agency / Creative</option>
+      <option value="custom">Custom</option>
+    </select>
+    <label style="font-size:12px;color:#94a3b8;display:block;margin:12px 0 4px">Context</label>
+    <input type="text" id="s-edit-ws-context" placeholder="e.g. Veterinary clinic, 20 staff" style="width:100%;padding:6px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px;font-family:inherit">
+    <label style="font-size:12px;color:#94a3b8;display:block;margin:12px 0 4px">Privacy</label>
+    <select id="s-edit-privacy" style="width:100%;padding:6px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px;font-family:inherit">
+      <option value="standard">Standard</option>
+      <option value="hipaa_aware">HIPAA-aware (local only)</option>
+      <option value="strict">Strict</option>
+    </select>
+    <button onclick="saveSettings()" style="margin-top:12px;background:#2563eb;border:none;border-radius:6px;color:#fff;padding:8px 16px;font-size:13px;cursor:pointer;font-family:inherit">Save</button>
+    <span id="s-save-status" style="font-size:11px;margin-left:8px;color:#34d399"></span>
   </div>
 
   <div class="section-title">About</div>
@@ -476,14 +508,64 @@ function copyInviteCode() {
 
 // ---- Settings ----
 async function loadSettings() {
+  const wsTypes = { dev_team: 'Engineering', business_team: 'Operations', healthcare: 'Healthcare / Clinic', agency: 'Agency / Creative', custom: 'Custom' };
+  const privacyLabels = { standard: 'Standard', hipaa_aware: 'HIPAA-aware (local only)', strict: 'Strict' };
   try {
-    const r = await fetch(`${API}/teams/${teamId}/members`, { headers: hdrs() });
-    // Just show workspace type from billing
-    const br = await fetch(`${API}/billing/status?team_id=${teamId}`, { headers: hdrs() });
+    const [cr, br] = await Promise.all([
+      fetch(`${API}/teams/${teamId}/config`, { headers: hdrs() }),
+      fetch(`${API}/billing/status?team_id=${teamId}`, { headers: hdrs() }),
+    ]);
+    const cfg = cr.ok ? await cr.json() : {};
     const billing = await br.json();
-    document.getElementById('s-workspace').textContent = billing.tier ? `${billing.tier} plan` : 'Not set';
-    document.getElementById('s-privacy').textContent = 'Local audio processing';
+
+    document.getElementById('s-ws-type').textContent = wsTypes[cfg.workspace_type] || cfg.workspace_type || '—';
+    document.getElementById('s-ws-context').textContent = cfg.workspace_context || '—';
+    document.getElementById('s-privacy').textContent = privacyLabels[cfg.privacy_preset] || cfg.privacy_preset || '—';
+    document.getElementById('s-edit-ws-type').value = cfg.workspace_type || 'custom';
+    document.getElementById('s-edit-ws-context').value = cfg.workspace_context || '';
+    document.getElementById('s-edit-privacy').value = cfg.privacy_preset || 'standard';
+
+    document.getElementById('s-llm').textContent = billing.has_subscription
+      ? `AXIS Cloud (${billing.tier === 'team' ? 'Team' : 'Pro'} plan)`
+      : 'Anthropic (via AXIS)';
   } catch {}
+}
+
+async function saveSettings() {
+  const wsType = document.getElementById('s-edit-ws-type').value;
+  const wsContext = document.getElementById('s-edit-ws-context').value;
+  const privacy = document.getElementById('s-edit-privacy').value;
+  const statusEl = document.getElementById('s-save-status');
+  statusEl.textContent = 'Saving...';
+  statusEl.style.color = '#64748b';
+
+  try {
+    const r = await fetch(`${API}/teams/${teamId}/config`, {
+      method: 'PUT', headers: hdrs(),
+      body: JSON.stringify({
+        workspace_type: wsType,
+        workspace_context: wsContext,
+        privacy_preset: privacy,
+      }),
+    });
+    if (r.ok) {
+      // Cache locally
+      localStorage.setItem('axis_team_config', JSON.stringify({
+        workspace_type: wsType, workspace_context: wsContext, privacy_preset: privacy,
+      }));
+      statusEl.textContent = 'Saved';
+      statusEl.style.color = '#34d399';
+      // Refresh display
+      loadSettings();
+    } else {
+      const err = await r.json();
+      statusEl.textContent = err.detail || 'Failed';
+      statusEl.style.color = '#f87171';
+    }
+  } catch {
+    statusEl.textContent = 'Error';
+    statusEl.style.color = '#f87171';
+  }
 }
 
 function esc(s) {
