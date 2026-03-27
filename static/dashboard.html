@@ -47,6 +47,8 @@
   }
   .header-btn:hover { background: #334155; }
   .header-btn.active { background: #1e3a5f; border-color: #4ac0ff; color: #4ac0ff; }
+  body.solo-mode .team-only { display: none; }
+  body.solo-mode #phone-mic-btn { display: none; }
   .header-input {
     background: #0a0e1a;
     border: 1px solid #334155;
@@ -391,8 +393,8 @@
 <!-- Scrollable content -->
 <div class="main-scroll" id="main-scroll">
 
-  <!-- Team Activity + Conflicts -->
-  <div class="row-split">
+  <!-- Team Activity + Conflicts (hidden in solo mode) -->
+  <div class="row-split team-only">
     <div class="panel">
       <div class="panel-header">Team Activity <span id="people-badge" class="badge">0</span></div>
       <div class="panel-body" id="people-panel">
@@ -407,8 +409,8 @@
     </div>
   </div>
 
-  <!-- Branches -->
-  <div class="panel">
+  <!-- Branches (hidden in solo mode) -->
+  <div class="panel team-only">
     <div class="panel-header">Branches <span id="branches-badge" class="badge">0</span></div>
     <div class="panel-body">
       <div class="branches-wrap" id="branches-panel">
@@ -460,6 +462,11 @@ async function loadDashboardConfig() {
     BACKEND_URL = cfg.backend_url || '';
     AUTH_TOKEN = cfg.auth_token || '';
     TEAM_ID = cfg.team_id || '';
+
+    // Solo mode: no cloud sync = personal workspace, hide team panels
+    if (!cfg.cloud_sync) {
+      document.body.classList.add('solo-mode');
+    }
   } catch(e) {}
   // If no backend, try legacy Supabase (for dev)
   if (!BACKEND_URL) {
