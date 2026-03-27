@@ -361,8 +361,43 @@
     </div>
   </div>
 
-  <!-- Step 4: Mic Check -->
-  <div class="step" id="step-4" data-title="Mic Check">
+  <!-- Step 4: AI Analysis -->
+  <div class="step" id="step-4" data-title="AI Setup">
+    <h2>How should AXIS analyze your sessions?</h2>
+    <div class="workspace-cards" style="margin-top:16px">
+      <div class="ws-card selected" onclick="pickLLM('ollama')" id="llm-ollama">
+        <h3>Local (Private)</h3>
+        <p>AI runs on your machine. Nothing leaves your network. Requires Ollama installed.</p>
+      </div>
+      <div class="ws-card" onclick="pickLLM('byok')" id="llm-byok">
+        <h3>Your API Key</h3>
+        <p>Bring your own Anthropic, OpenAI, Google, or Groq key. Your license, your data policy.</p>
+      </div>
+      <div class="ws-card" onclick="pickLLM('hosted')" id="llm-hosted">
+        <h3>AXIS Cloud</h3>
+        <p>We handle everything. Best quality (Claude). Included in subscription.</p>
+      </div>
+    </div>
+    <div id="llm-byok-fields" style="display:none;margin-top:12px">
+      <label>Provider</label>
+      <select id="llm-byok-provider" style="width:100%;padding:6px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px">
+        <option value="anthropic">Anthropic (Claude)</option>
+        <option value="openai">OpenAI (GPT)</option>
+        <option value="google">Google (Gemini)</option>
+        <option value="groq">Groq</option>
+      </select>
+      <label>API Key</label>
+      <input type="password" id="llm-byok-key" placeholder="sk-..." style="width:100%;padding:6px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px;margin-top:4px">
+    </div>
+    <div class="error" id="llm-error"></div>
+    <div class="btn-row">
+      <button class="btn" onclick="goStep(3)">Back</button>
+      <button class="btn primary" onclick="doSetLLM()">Continue</button>
+    </div>
+  </div>
+
+  <!-- Step 5: Mic Check -->
+  <div class="step" id="step-5" data-title="Mic Check">
     <h2>Test your microphone</h2>
     <p class="info" style="margin-top:0">Speak for 5 seconds. AXIS will transcribe it to verify the pipeline works.</p>
     <div class="mic-status">
@@ -372,14 +407,14 @@
     </div>
     <div class="mic-result" id="mic-result"></div>
     <div class="btn-row">
-      <button class="btn" onclick="goStep(3)">Back</button>
-      <button class="btn" onclick="goStep(5)" style="color:#64748b">Skip</button>
-      <button class="btn primary" onclick="goStep(5)" id="mic-next" disabled>Continue</button>
+      <button class="btn" onclick="goStep(4)">Back</button>
+      <button class="btn" onclick="goStep(6)" style="color:#64748b">Skip</button>
+      <button class="btn primary" onclick="goStep(6)" id="mic-next" disabled>Continue</button>
     </div>
   </div>
 
-  <!-- Step 5: QR Pairing (team only) -->
-  <div class="step" id="step-5" data-title="Phone Pairing">
+  <!-- Step 6: QR Pairing (team only) -->
+  <div class="step" id="step-6" data-title="Phone Pairing">
     <h2>Connect your phone (optional)</h2>
     <p class="info" style="margin-top:0">Use your phone as a wireless microphone. Scan the QR code below.</p>
     <div class="qr-container">
@@ -387,25 +422,25 @@
       <div class="pair-status" id="nux-pair-status">Loading...</div>
     </div>
     <div class="btn-row">
-      <button class="btn" onclick="goStep(4)">Back</button>
-      <button class="btn primary" onclick="goStep(6)">Continue</button>
-    </div>
-  </div>
-
-  <!-- Step 6: Invite Teammates -->
-  <div class="step" id="step-6" data-title="Invite">
-    <h2>Invite teammates (optional)</h2>
-    <p class="info" style="margin-top:0">Share this invite code with your team. They'll use it to join your workspace.</p>
-    <div class="invite-code" id="invite-code" onclick="copyInvite()">Generating...</div>
-    <div class="info" style="text-align:center">Click to copy</div>
-    <div class="btn-row">
       <button class="btn" onclick="goStep(5)">Back</button>
       <button class="btn primary" onclick="goStep(7)">Continue</button>
     </div>
   </div>
 
-  <!-- Step 7: Billing -->
-  <div class="step" id="step-7" data-title="Plan">
+  <!-- Step 7: Invite Teammates -->
+  <div class="step" id="step-7" data-title="Invite">
+    <h2>Invite teammates (optional)</h2>
+    <p class="info" style="margin-top:0">Share this invite code with your team. They'll use it to join your workspace.</p>
+    <div class="invite-code" id="invite-code" onclick="copyInvite()">Generating...</div>
+    <div class="info" style="text-align:center">Click to copy</div>
+    <div class="btn-row">
+      <button class="btn" onclick="goStep(6)">Back</button>
+      <button class="btn primary" onclick="goStep(8)">Continue</button>
+    </div>
+  </div>
+
+  <!-- Step 8: Billing -->
+  <div class="step" id="step-8" data-title="Plan">
     <h2>Choose your plan</h2>
     <p class="info" style="margin-top:0;margin-bottom:16px">14-day free trial. No charge until trial ends.</p>
     <div class="tier-cards">
@@ -425,13 +460,13 @@
     <div id="promo-preview" style="font-size:12px;margin-top:4px;height:14px"></div>
     <div class="error" id="billing-error"></div>
     <div class="btn-row">
-      <button class="btn" onclick="goStep(6)">Back</button>
+      <button class="btn" onclick="goStep(7)">Back</button>
       <button class="btn primary" onclick="doBilling()">Start Free Trial</button>
     </div>
   </div>
 
-  <!-- Step 8: Done -->
-  <div class="step" id="step-8" data-title="Done">
+  <!-- Step 9: Done -->
+  <div class="step" id="step-9" data-title="Done">
     <h2>You're all set</h2>
     <p class="info" style="margin-top:0;font-size:14px;color:#e2e8f0">
       AXIS is ready to go. Click below to open the dashboard and start your first session.
@@ -443,11 +478,11 @@
 </div>
 
 <script>
-const TOTAL_STEPS = 8;
+const TOTAL_STEPS = 9;
 let currentStep = 1;
 let state = {
   token: '', userId: '', teamId: '', teamMode: 'team',
-  workspaceType: 'dev_team', tier: 'team', backendUrl: '',
+  workspaceType: 'dev_team', tier: 'team', backendUrl: '', llmChoice: 'ollama',
 };
 
 // Load config from local server
@@ -506,8 +541,8 @@ function goStep(n) {
       ? 'e.g. freelance developer, consultant'
       : 'e.g. 12-person veterinary clinic';
   }
-  if (n === 5) loadQR();
-  if (n === 6) generateInvite();
+  if (n === 6) loadQR();
+  if (n === 7) generateInvite();
 }
 
 function showLogin() {
@@ -564,6 +599,42 @@ function btnLoading(btn, loading) {
   if (!btn) return;
   btn.disabled = loading;
   btn.classList.toggle('loading', loading);
+}
+
+// Step 4: LLM choice
+function pickLLM(choice) {
+  state.llmChoice = choice;
+  document.getElementById('llm-ollama').classList.toggle('selected', choice === 'ollama');
+  document.getElementById('llm-byok').classList.toggle('selected', choice === 'byok');
+  document.getElementById('llm-hosted').classList.toggle('selected', choice === 'hosted');
+  document.getElementById('llm-byok-fields').style.display = choice === 'byok' ? 'block' : 'none';
+}
+
+async function doSetLLM() {
+  const errEl = document.getElementById('llm-error');
+  errEl.textContent = '';
+  const choice = state.llmChoice || 'ollama';
+
+  const settings = {};
+  if (choice === 'ollama') {
+    settings.llm_provider = 'ollama';
+    settings.llm_api_key = '';
+  } else if (choice === 'byok') {
+    const provider = document.getElementById('llm-byok-provider').value;
+    const key = document.getElementById('llm-byok-key').value.trim();
+    if (!key) { errEl.textContent = 'Enter your API key'; return; }
+    settings.llm_provider = provider;
+    settings.llm_api_key = key;
+  } else if (choice === 'hosted') {
+    settings.llm_provider = 'anthropic';
+    settings.llm_api_key = '';
+  }
+
+  const btn = event.target;
+  btnLoading(btn, true);
+  await saveSettings(settings);
+  btnLoading(btn, false);
+  goStep(5);
 }
 
 async function doVerifyEmail() {
@@ -977,7 +1048,7 @@ async function doBilling() {
         tier: state.tier,
       });
       if (redeem.redeemed) {
-        goStep(8);
+        goStep(9);
         return;
       }
       // If code exists but isn't 100% off, fall through to checkout
@@ -999,7 +1070,7 @@ async function doBilling() {
     const data = await api('/billing/checkout', payload);
     if (data.checkout_url) {
       window.open(data.checkout_url, '_blank');
-      goStep(8);
+      goStep(9);
     } else {
       errEl.textContent = data.detail || data._detail || 'Billing setup failed';
     }
