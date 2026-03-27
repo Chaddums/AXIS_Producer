@@ -463,6 +463,10 @@ class SessionController:
             output_terminology=self.settings.output_terminology,
             backend_client=self._backend_client,
             team_id=self.settings.team_id,
+            llm_provider=self.settings.llm_provider,
+            llm_api_key=self.settings.llm_api_key,
+            llm_model=self.settings.llm_model,
+            ollama_url=self.settings.ollama_url,
         )
 
         # Phone mic (WebSocket, shares chunk_queue with local mic)

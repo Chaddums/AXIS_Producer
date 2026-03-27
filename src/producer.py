@@ -1,15 +1,14 @@
-"""Batch Processor — periodically sends transcript buffer to Claude and appends structured notes to log."""
+"""Batch Processor — periodically sends transcript buffer to the configured LLM and appends structured notes to log."""
 
 import os
 import threading
 import time
 from datetime import datetime
 
-import anthropic
+from llm_provider import call_llm, DEFAULT_MODELS
 
 BATCH_INTERVAL_SEC = 300
 MIN_WORDS_TO_BATCH = 50
-MODEL = "claude-sonnet-4-20250514"
 MAX_TOKENS = 1024
 
 SYSTEM_PROMPT = """\
@@ -67,17 +66,25 @@ class BatchProducer:
                  workspace_context: str = "",
                  output_terminology: dict | None = None,
                  backend_client=None,
-                 team_id: str = ""):
+                 team_id: str = "",
+                 llm_provider: str = "ollama",
+                 llm_api_key: str = "",
+                 llm_model: str = "",
+                 ollama_url: str = "http://localhost:11434"):
         self.stop_event = stop_event
         self.buffer_lock = buffer_lock
         self.transcript_buffer = transcript_buffer
         self.log_path = log_path
         self.interval = interval
         self.verbose = verbose
-        self.on_items_logged = on_items_logged  # callback(list[tuple[str, str]]) — (category, text)
+        self.on_items_logged = on_items_logged
         self.output_terminology = output_terminology or {}
         self._backend = backend_client
         self._team_id = team_id
+        self._llm_provider = llm_provider
+        self._llm_api_key = llm_api_key
+        self._llm_model = llm_model
+        self._ollama_url = ollama_url
 
         # Build system prompt with optional workspace context
         self._system_prompt = SYSTEM_PROMPT
@@ -86,10 +93,6 @@ class BatchProducer:
 
         self.force_batch = threading.Event()
         self._batch_count = 0
-        # Direct Anthropic client as fallback when no backend
-        self._client = None
-        if not self._backend or not self._team_id:
-            self._client = anthropic.Anthropic()  # uses ANTHROPIC_API_KEY env var
 
     def run(self):
         """Blocking — runs until stop_event is set."""
@@ -125,12 +128,12 @@ class BatchProducer:
         timestamp = datetime.now().strftime("%H:%M")
 
         if self.verbose:
-            print(f"  [startup] {word_count} words captured -> Claude")
+            print(f"  [startup] {word_count} words captured -> LLM")
 
         try:
-            notes = self._call_claude(transcript)
+            notes = self._call_llm(transcript)
         except Exception as e:
-            print(f"  [startup] Claude API error: {e}")
+            print(f"  [startup] LLM error: {e}")
             with self.buffer_lock:
                 self.transcript_buffer.insert(0, transcript)
             return False
@@ -168,12 +171,12 @@ class BatchProducer:
         timestamp = datetime.now().strftime("%H:%M")
 
         if self.verbose:
-            print(f"  [producer] batch {self._batch_count} -- {word_count} words -> Claude")
+            print(f"  [producer] batch {self._batch_count} -- {word_count} words -> LLM")
 
         try:
-            notes = self._call_claude(transcript)
+            notes = self._call_llm(transcript)
         except Exception as e:
-            print(f"  [producer] Claude API error: {e}")
+            print(f"  [producer] LLM error: {e}")
             with self.buffer_lock:
                 self.transcript_buffer.insert(0, transcript)
             return
@@ -193,12 +196,14 @@ class BatchProducer:
                     if self.verbose:
                         print(f"  [producer] callback error: {e}")
 
-    def _call_claude(self, transcript: str) -> str:
-        """Send transcript to Claude via backend proxy or direct SDK."""
-        if self._backend and self._team_id:
+    def _call_llm(self, transcript: str) -> str:
+        """Send transcript to the configured LLM provider."""
+        # Path 1: AXIS hosted backend proxy (uses AXIS's Anthropic key, metered)
+        if self._backend and self._team_id and self._llm_provider == "anthropic" and not self._llm_api_key:
             result = self._backend.claude_batch(
                 self._team_id, self._system_prompt, transcript,
-                model=MODEL, max_tokens=MAX_TOKENS,
+                model=self._llm_model or DEFAULT_MODELS["anthropic"],
+                max_tokens=MAX_TOKENS,
             )
             if not result or result.get("_error"):
                 detail = result.get("_detail", "Unknown error") if result else "Backend unreachable"
@@ -206,13 +211,16 @@ class BatchProducer:
             content = result.get("content", [])
             text = content[0].get("text", "") if content else ""
         else:
-            response = self._client.messages.create(
-                model=MODEL,
-                max_tokens=MAX_TOKENS,
+            # Path 2: Direct call to provider (local Ollama or BYOK cloud)
+            text = call_llm(
+                provider=self._llm_provider,
                 system=self._system_prompt,
-                messages=[{"role": "user", "content": transcript}],
+                user_message=transcript,
+                api_key=self._llm_api_key,
+                model=self._llm_model,
+                max_tokens=MAX_TOKENS,
+                ollama_url=self._ollama_url,
             )
-            text = response.content[0].text
         return self._apply_terminology(text)
 
     @staticmethod

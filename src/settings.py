@@ -64,6 +64,12 @@ class Settings:
     dashboard_port: int = 8080            # localhost port for dashboard
     verbose: bool = False
 
+    # LLM provider
+    llm_provider: str = "ollama"          # ollama | anthropic | openai | google | groq
+    llm_api_key: str = ""                 # user's own API key (blank for ollama)
+    llm_model: str = ""                   # override model name (blank = provider default)
+    ollama_url: str = "http://localhost:11434"
+
     # Backend integration
     backend_url: str = "https://axisproducer-production.up.railway.app"
     auth_token: str = ""                  # JWT from backend login/signup

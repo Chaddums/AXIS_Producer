@@ -1584,6 +1584,20 @@ async function inviteFromAccount() {
       <option value="other">Other</option>
     </select>
 
+    <div style="font-size:12px;color:#64748b;margin-bottom:4px;margin-top:16px">AI analysis</div>
+    <select id="cfg-llm-provider" style="width:100%;padding:6px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px" onchange="toggleApiKey()">
+      <option value="ollama">Local (Ollama) — private, nothing leaves your machine</option>
+      <option value="anthropic">Anthropic (Claude) — best quality, cloud</option>
+      <option value="openai">OpenAI (GPT) — cloud</option>
+      <option value="google">Google (Gemini) — cloud</option>
+      <option value="groq">Groq — fast cloud</option>
+    </select>
+    <div id="cfg-api-key-row" style="display:none;margin-top:8px">
+      <label style="font-size:12px;color:#94a3b8;margin:0">API key</label>
+      <input type="password" id="cfg-llm-api-key" placeholder="Your API key" style="width:100%;padding:6px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px;margin-top:4px">
+      <div style="font-size:11px;color:#475569;margin-top:4px">Your key, your data policy. AXIS never stores or shares it beyond your machine.</div>
+    </div>
+
     <div style="font-size:12px;color:#64748b;margin-bottom:4px;margin-top:16px">Transcription quality</div>
     <select id="cfg-whisper" style="width:100%;padding:6px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px">
       <option value="tiny.en">Fast — quick results, may miss some words</option>
@@ -1634,31 +1648,31 @@ const PROFILES = {
   meetings: {
     email: true, calendar: true, chat: false, vcs: false, claude: false,
     platform: 'none', whisper: 'base.en', interval: '300', notification: 'info',
-    cloud: true, autoDetect: true,
+    cloud: true, autoDetect: true, llm: 'ollama',
     context: 'Track decisions, action items, and follow-ups from meetings',
   },
   dev: {
     email: false, calendar: true, chat: true, vcs: true, claude: true,
     platform: 'slack', whisper: 'base.en', interval: '300', notification: 'info',
-    cloud: true, autoDetect: true,
+    cloud: true, autoDetect: true, llm: 'ollama',
     context: 'Track code changes, blockers, and technical decisions',
   },
   casual: {
     email: false, calendar: false, chat: false, vcs: false, claude: false,
     platform: 'none', whisper: 'tiny.en', interval: '900', notification: 'critical',
-    cloud: false, autoDetect: true,
+    cloud: false, autoDetect: true, llm: 'ollama',
     context: 'Just capture the highlights',
   },
   clinic: {
     email: true, calendar: true, chat: false, vcs: false, claude: false,
     platform: 'none', whisper: 'small.en', interval: '300', notification: 'warning',
-    cloud: false, autoDetect: true,
+    cloud: false, autoDetect: true, llm: 'ollama',
     context: 'Patient scheduling, team coordination, follow-up tracking',
   },
   creative: {
     email: false, calendar: true, chat: true, vcs: false, claude: false,
     platform: 'discord', whisper: 'base.en', interval: '600', notification: 'info',
-    cloud: true, autoDetect: true,
+    cloud: true, autoDetect: true, llm: 'ollama',
     context: 'Brainstorming sessions, design decisions, project updates',
   },
 };
@@ -1677,11 +1691,20 @@ function applyProfile(name) {
   document.getElementById('cfg-notification').value = p.notification;
   document.getElementById('cfg-cloud-sync').checked = p.cloud;
   document.getElementById('cfg-auto-detect').checked = p.autoDetect;
+  document.getElementById('cfg-llm-provider').value = p.llm || 'ollama';
+  document.getElementById('cfg-llm-api-key').value = '';
+  toggleApiKey();
   document.getElementById('cfg-ws-context').value = p.context;
   // Flash the button
   document.querySelectorAll('#config-modal .close-btn').forEach(b => b.style.borderColor = '');
   event.target.style.borderColor = '#4ac0ff';
   setTimeout(() => { event.target.style.borderColor = ''; }, 1000);
+}
+
+function toggleApiKey() {
+  const provider = document.getElementById('cfg-llm-provider').value;
+  const row = document.getElementById('cfg-api-key-row');
+  row.style.display = provider === 'ollama' ? 'none' : 'block';
 }
 
 async function showConfigPanel() {
@@ -1701,6 +1724,9 @@ async function showConfigPanel() {
     document.getElementById('cfg-cloud-sync').checked = cfg.cloud_sync || false;
     document.getElementById('cfg-auto-detect').checked = cfg.auto_detect !== false;
     document.getElementById('cfg-ws-context').value = cfg.workspace_context || '';
+    document.getElementById('cfg-llm-provider').value = cfg.llm_provider || 'ollama';
+    document.getElementById('cfg-llm-api-key').value = cfg.llm_api_key || '';
+    toggleApiKey();
   } catch(e) {
     document.getElementById('config-status').textContent = 'Failed to load settings';
   }
@@ -1731,6 +1757,8 @@ async function saveConfig() {
         cloud_sync: document.getElementById('cfg-cloud-sync').checked,
         auto_detect: document.getElementById('cfg-auto-detect').checked,
         workspace_context: document.getElementById('cfg-ws-context').value,
+        llm_provider: document.getElementById('cfg-llm-provider').value,
+        llm_api_key: document.getElementById('cfg-llm-api-key').value,
       }),
     });
     status.innerHTML = '<span style="color:#34d399">Saved. Restart AXIS to apply changes.</span>';
