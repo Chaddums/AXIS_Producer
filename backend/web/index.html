@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AXIS</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='15' fill='%23111827' stroke='%234ac0ff' stroke-width='2'/><text x='16' y='22' text-anchor='middle' font-size='18' font-weight='bold' fill='%234ac0ff' font-family='sans-serif'>A</text></svg>">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0a0f1a;
+    color: #c8d0e0;
+    min-height: 100vh;
+  }
+
+  .header {
+    background: #111827;
+    border-bottom: 1px solid #1e293b;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header h1 { font-size: 16px; color: #4ac0ff; font-weight: 600; }
+  .header .status { font-size: 11px; color: #64748b; }
+  .header .status.ok { color: #34d399; }
+  .header .spacer { flex: 1; }
+  .header button {
+    background: #1e293b; border: 1px solid #334155; color: #c8d0e0;
+    padding: 4px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;
+    font-family: inherit;
+  }
+  .header button:hover { background: #334155; }
+
+  /* Login */
+  .login-wrap {
+    max-width: 360px; margin: 60px auto; padding: 24px;
+    background: #111827; border: 1px solid #1e293b; border-radius: 12px;
+  }
+  .login-wrap h2 { font-size: 18px; color: #4ac0ff; margin-bottom: 16px; }
+  .login-wrap label { display: block; font-size: 12px; color: #94a3b8; margin: 12px 0 4px; }
+  .login-wrap input {
+    width: 100%; padding: 8px 12px; background: #0a0f1a;
+    border: 1px solid #334155; border-radius: 6px;
+    color: #e2e8f0; font-size: 14px; font-family: inherit;
+  }
+  .login-wrap input:focus { outline: none; border-color: #4ac0ff; }
+  .login-wrap .btn {
+    display: block; width: 100%; margin-top: 16px; padding: 10px;
+    background: #2563eb; border: none; border-radius: 6px;
+    color: #fff; font-size: 14px; cursor: pointer; font-family: inherit;
+  }
+  .login-wrap .btn:hover { background: #1d4ed8; }
+  .login-wrap .error { color: #f87171; font-size: 12px; margin-top: 8px; }
+
+  /* Feed */
+  .feed { max-width: 700px; margin: 0 auto; padding: 16px; }
+  .event {
+    background: #111827; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 12px 16px; margin-bottom: 8px;
+  }
+  .event-meta { font-size: 11px; color: #64748b; margin-bottom: 4px; }
+  .event-who { color: #4ac0ff; font-weight: 600; }
+  .event-summary { font-size: 14px; line-height: 1.5; }
+  .event-stream {
+    display: inline-block; font-size: 10px; padding: 1px 6px;
+    background: #1e293b; border-radius: 3px; color: #64748b;
+  }
+  .empty { text-align: center; color: #475569; padding: 40px; font-size: 14px; }
+
+  /* Chat input */
+  .chat-bar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: #111827; border-top: 1px solid #1e293b;
+    padding: 12px 16px; display: flex; gap: 8px;
+    max-width: 700px; margin: 0 auto;
+  }
+  .chat-bar input {
+    flex: 1; padding: 8px 12px; background: #0a0f1a;
+    border: 1px solid #334155; border-radius: 6px;
+    color: #e2e8f0; font-size: 14px; font-family: inherit;
+  }
+  .chat-bar input:focus { outline: none; border-color: #4ac0ff; }
+  .chat-bar button {
+    background: #2563eb; border: none; border-radius: 6px;
+    color: #fff; padding: 8px 16px; font-size: 14px; cursor: pointer;
+    font-family: inherit;
+  }
+
+  .hidden { display: none; }
+
+  @media (max-width: 600px) {
+    .feed { padding: 8px; }
+    .event { padding: 10px 12px; }
+    .chat-bar { padding: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>AXIS</h1>
+  <span class="status" id="status">Not connected</span>
+  <div class="spacer"></div>
+  <button id="logout-btn" class="hidden" onclick="logout()">Log out</button>
+</div>
+
+<!-- Login screen -->
+<div id="login-screen">
+  <div class="login-wrap">
+    <h2>Sign in to AXIS</h2>
+    <label>Email</label>
+    <input type="email" id="login-email" placeholder="you@company.com">
+    <label>Password</label>
+    <input type="password" id="login-password" placeholder="Password">
+    <button class="btn" onclick="doLogin()">Sign In</button>
+    <div class="error" id="login-error"></div>
+  </div>
+</div>
+
+<!-- Dashboard (hidden until logged in) -->
+<div id="dashboard" class="hidden">
+  <div class="feed" id="feed">
+    <div class="empty">Loading events...</div>
+  </div>
+  <div style="height:60px"></div>
+  <div class="chat-bar">
+    <input type="text" id="chat-input" placeholder="Send a message..." onkeydown="if(event.key==='Enter')sendChat()">
+    <button onclick="sendChat()">Send</button>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+let token = localStorage.getItem('axis_token') || '';
+let teamId = localStorage.getItem('axis_team_id') || '';
+let userId = localStorage.getItem('axis_user_id') || '';
+let userName = localStorage.getItem('axis_user_name') || '';
+let lastEventId = 0;
+let pollTimer = null;
+
+function headers() {
+  return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+}
+
+// Auto-login if token exists
+if (token && teamId) {
+  showDashboard();
+} else {
+  document.getElementById('login-screen').classList.remove('hidden');
+}
+
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  errEl.textContent = '';
+
+  try {
+    const r = await fetch(`${API}/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await r.json();
+    if (data.token) {
+      token = data.token;
+      userId = data.user_id;
+      teamId = data.teams?.[0] || '';
+      localStorage.setItem('axis_token', token);
+      localStorage.setItem('axis_team_id', teamId);
+      localStorage.setItem('axis_user_id', userId);
+
+      // Get user name
+      try {
+        const tr = await fetch(`${API}/teams`, { headers: headers() });
+        const teams = await tr.json();
+        if (teams.length) localStorage.setItem('axis_team_name', teams[0].name);
+      } catch(e) {}
+
+      showDashboard();
+    } else {
+      errEl.textContent = data.detail || 'Login failed';
+    }
+  } catch(e) {
+    errEl.textContent = 'Could not reach server';
+  }
+}
+
+function showDashboard() {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('dashboard').classList.remove('hidden');
+  document.getElementById('logout-btn').classList.remove('hidden');
+  loadEvents();
+  pollTimer = setInterval(pollEvents, 5000);
+}
+
+function logout() {
+  localStorage.clear();
+  token = ''; teamId = ''; userId = '';
+  if (pollTimer) clearInterval(pollTimer);
+  document.getElementById('dashboard').classList.add('hidden');
+  document.getElementById('logout-btn').classList.add('hidden');
+  document.getElementById('login-screen').classList.remove('hidden');
+}
+
+async function loadEvents() {
+  const statusEl = document.getElementById('status');
+  try {
+    const r = await fetch(`${API}/events?team_id=${teamId}&limit=100`, { headers: headers() });
+    if (!r.ok) throw new Error(r.status);
+    const events = await r.json();
+    if (events.length) {
+      lastEventId = Math.max(...events.map(e => e.id || 0));
+      renderEvents(events.reverse());
+    } else {
+      document.getElementById('feed').innerHTML = '<div class="empty">No events yet. Start a session on your desktop to see activity here.</div>';
+    }
+    statusEl.textContent = `Connected`;
+    statusEl.className = 'status ok';
+  } catch(e) {
+    statusEl.textContent = `Error: ${e.message}`;
+    statusEl.className = 'status';
+  }
+}
+
+async function pollEvents() {
+  try {
+    const r = await fetch(`${API}/events?team_id=${teamId}&since_id=${lastEventId}&limit=50`, { headers: headers() });
+    if (!r.ok) return;
+    const events = await r.json();
+    if (events.length) {
+      lastEventId = Math.max(...events.map(e => e.id || 0));
+      prependEvents(events);
+    }
+  } catch(e) {}
+}
+
+function renderEvents(events) {
+  const feed = document.getElementById('feed');
+  if (!events.length) {
+    feed.innerHTML = '<div class="empty">No events yet</div>';
+    return;
+  }
+  feed.innerHTML = events.map(eventHtml).join('');
+}
+
+function prependEvents(events) {
+  const feed = document.getElementById('feed');
+  const empty = feed.querySelector('.empty');
+  if (empty) empty.remove();
+  const html = events.map(eventHtml).join('');
+  feed.insertAdjacentHTML('afterbegin', html);
+}
+
+function eventHtml(e) {
+  const time = new Date(e.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const who = esc(e.who || '?');
+  const summary = esc(e.summary || '');
+  const stream = esc(e.stream || '');
+  return `<div class="event">
+    <div class="event-meta">
+      <span class="event-who">${who}</span> &middot; ${time}
+      <span class="event-stream">${stream}</span>
+    </div>
+    <div class="event-summary">${summary}</div>
+  </div>`;
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+async function sendChat() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+
+  try {
+    await fetch(`${API}/events`, {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify({
+        team_id: teamId,
+        session_id: '',
+        stream: 'chat',
+        event_type: 'chat',
+        who: userName || userId,
+        summary: text,
+        ts: new Date().toISOString(),
+      }),
+    });
+  } catch(e) {}
+}
+
+// Enter key on login
+document.getElementById('login-password').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+</script>
+
+</body>
+</html>

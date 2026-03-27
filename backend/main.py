@@ -4,7 +4,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -61,3 +62,10 @@ app.include_router(routes_billing.router)
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# Serve hosted dashboard (static files)
+import os
+_web_dir = os.path.join(os.path.dirname(__file__), "web")
+if os.path.isdir(_web_dir):
+    app.mount("/app", StaticFiles(directory=_web_dir, html=True), name="web")
