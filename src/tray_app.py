@@ -78,24 +78,14 @@ class TrayApp:
     def _build_menu(self) -> pystray.Menu:
         return pystray.Menu(
             pystray.MenuItem(
-                "Start Listening",
-                self._on_start_listening,
-                visible=lambda item: self.controller.state in (State.IDLE,),
-            ),
-            pystray.MenuItem(
-                "Stop Listening",
-                self._on_stop_listening,
-                visible=lambda item: self.controller.state == State.DETECTING,
-            ),
-            pystray.MenuItem(
-                "Start Recording",
-                self._on_start_recording,
+                "Start Session",
+                self._on_start_session,
                 visible=lambda item: self.controller.state in (
                     State.IDLE, State.DETECTING),
             ),
             pystray.MenuItem(
-                "Stop Recording",
-                self._on_stop_recording,
+                "Stop Session",
+                self._on_stop_session,
                 visible=lambda item: self.controller.state == State.RECORDING,
             ),
             pystray.MenuItem(
@@ -135,8 +125,8 @@ class TrayApp:
                 self._on_open_dashboard,
             ),
             pystray.MenuItem(
-                "Run Setup...",
-                self._on_run_setup,
+                "Open Setup",
+                self._on_open_nux,
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
@@ -162,16 +152,10 @@ class TrayApp:
 
     # ----- Menu handlers -----
 
-    def _on_start_listening(self, icon, item):
-        self.controller.start_detecting()
-
-    def _on_stop_listening(self, icon, item):
-        self.controller.stop_detecting()
-
-    def _on_start_recording(self, icon, item):
+    def _on_start_session(self, icon, item):
         self.controller.start_recording()
 
-    def _on_stop_recording(self, icon, item):
+    def _on_stop_session(self, icon, item):
         threading.Thread(target=self.controller.stop_recording,
                          name="stop-recording", daemon=True).start()
 
@@ -205,13 +189,10 @@ class TrayApp:
         port = self.settings.dashboard_port
         webbrowser.open(f"http://localhost:{port}/dashboard.html")
 
-    def _on_run_setup(self, icon, item):
-        import subprocess
-        subprocess.Popen(
-            ["python", "setup.py"],
-            cwd=os.path.dirname(os.path.abspath(__file__)),
-            creationflags=subprocess.CREATE_NEW_CONSOLE,
-        )
+    def _on_open_nux(self, icon, item):
+        import webbrowser
+        port = self.settings.dashboard_port
+        webbrowser.open(f"http://localhost:{port}/nux.html")
 
     def _on_toggle_verbose(self, icon, item):
         self.settings.verbose = not self.settings.verbose
