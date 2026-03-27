@@ -17,3 +17,9 @@ phone_mic_key.pem
 build/
 dist/
 *.spec.bak
+digest.db
+phone_mic_cert.pem
+phone_mic_key.pem
+session_log.md
+triage_analytics.json
+__pycache__/
