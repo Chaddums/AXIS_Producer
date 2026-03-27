@@ -212,12 +212,15 @@ async function loadEvents() {
   try {
     const r = await fetch(`${API}/events?team_id=${teamId}&limit=100`, { headers: headers() });
     if (!r.ok) throw new Error(r.status);
-    const events = await r.json();
+    const allEvents = await r.json();
+    if (allEvents.length) {
+      lastEventId = Math.max(...allEvents.map(e => e.id || 0));
+    }
+    const events = allEvents.filter(e => e.stream !== 'presence' && e.event_type !== 'presence');
     if (events.length) {
-      lastEventId = Math.max(...events.map(e => e.id || 0));
       renderEvents(events.reverse());
     } else {
-      document.getElementById('feed').innerHTML = '<div class="empty">No events yet. Start a session on your desktop to see activity here.</div>';
+      document.getElementById('feed').innerHTML = '<div class="empty">No activity yet. Start a session on your desktop to see notes here.</div>';
     }
     statusEl.textContent = `Connected`;
     statusEl.className = 'status ok';
@@ -231,9 +234,12 @@ async function pollEvents() {
   try {
     const r = await fetch(`${API}/events?team_id=${teamId}&since_id=${lastEventId}&limit=50`, { headers: headers() });
     if (!r.ok) return;
-    const events = await r.json();
+    const allEvents = await r.json();
+    if (allEvents.length) {
+      lastEventId = Math.max(...allEvents.map(e => e.id || 0));
+    }
+    const events = allEvents.filter(e => e.stream !== 'presence' && e.event_type !== 'presence');
     if (events.length) {
-      lastEventId = Math.max(...events.map(e => e.id || 0));
       prependEvents(events);
     }
   } catch(e) {}
