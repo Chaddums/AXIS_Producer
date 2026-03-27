@@ -113,6 +113,14 @@
   .btn.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
   .btn.primary:hover { background: #1d4ed8; }
   .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn.loading { position: relative; color: transparent; }
+  .btn.loading::after {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    width: 14px; height: 14px; margin: -7px 0 0 -7px;
+    border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff;
+    border-radius: 50%; animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   .btn-row {
     display: flex;
@@ -551,13 +559,21 @@ function checkPwStrength() {
   el.innerHTML = '<span style="color:#34d399">Strong</span>';
 }
 
+function btnLoading(btn, loading) {
+  if (typeof btn === 'string') btn = document.querySelector(btn);
+  if (!btn) return;
+  btn.disabled = loading;
+  btn.classList.toggle('loading', loading);
+}
+
 async function doVerifyEmail() {
   const code = document.getElementById('verify-code-input').value.trim();
   const errEl = document.getElementById('verify-error');
   errEl.textContent = '';
-
   if (!code) { errEl.textContent = 'Enter the verification code'; return; }
 
+  const btn = event.target;
+  btnLoading(btn, true);
   try {
     const data = await api('/auth/verify-email', { token: code });
     if (data.verified) {
@@ -568,6 +584,7 @@ async function doVerifyEmail() {
   } catch(e) {
     errEl.textContent = 'Could not reach server';
   }
+  btnLoading(btn, false);
 }
 
 // Step 1: Signup
@@ -584,6 +601,8 @@ async function doSignup() {
   if (password.length < 8) { errEl.textContent = 'Password must be 8+ characters'; return; }
   if (!attested) { errEl.textContent = 'Self-attestation required'; return; }
 
+  const btn = event.target;
+  btnLoading(btn, true);
   try {
     const data = await api('/auth/signup', {
       email, password, name, organization: org, self_attested: true,
@@ -614,6 +633,7 @@ async function doSignup() {
   } catch(e) {
     errEl.textContent = 'Could not reach server';
   }
+  btnLoading(btn, false);
 }
 
 // Step 1b: Login
@@ -623,6 +643,8 @@ async function doLogin() {
   const errEl = document.getElementById('login-error');
   errEl.textContent = '';
 
+  const btn = event.target;
+  btnLoading(btn, true);
   try {
     const data = await api('/auth/login', { email, password });
     if (data.token) {
@@ -638,7 +660,7 @@ async function doLogin() {
         backend_url: state.backendUrl,
       });
       if (state.teamId) {
-        goStep(3); // Skip team creation
+        goStep(3);
       } else {
         goStep(2);
       }
@@ -648,6 +670,7 @@ async function doLogin() {
   } catch(e) {
     errEl.textContent = 'Could not reach server';
   }
+  btnLoading(btn, false);
 }
 
 // Step 2: Team mode
@@ -673,6 +696,8 @@ async function doCreateTeam() {
   const errEl = document.getElementById('team-error');
   errEl.textContent = '';
 
+  const btn = event.target;
+  btnLoading(btn, true);
   try {
     const data = await api('/teams', { name });
     if (data.id) {
@@ -699,6 +724,7 @@ async function doCreateTeam() {
   } catch(e) {
     errEl.textContent = 'Could not reach server';
   }
+  btnLoading(btn, false);
 }
 
 // Step 3: Workspace type
@@ -715,6 +741,8 @@ async function doSetWorkspace() {
 
   if (!state.workspaceType) { errEl.textContent = 'Pick a workspace type'; return; }
 
+  const btn = event.target;
+  btnLoading(btn, true);
   try {
     const resp = await fetch(state.backendUrl + `/teams/${state.teamId}/config`, {
       method: 'PUT',
@@ -748,6 +776,7 @@ async function doSetWorkspace() {
   } catch(e) {
     errEl.textContent = 'Failed to save workspace config';
   }
+  btnLoading(btn, false);
 }
 
 // Step 4: Mic check
@@ -937,6 +966,8 @@ async function doBilling() {
   const errEl = document.getElementById('billing-error');
   errEl.textContent = '';
 
+  const btn = event.target;
+  btnLoading(btn, true);
   try {
     // If there's a promo code, try to redeem it directly (skips Stripe for 100% off)
     if (promo) {
@@ -975,6 +1006,7 @@ async function doBilling() {
   } catch(e) {
     errEl.textContent = 'Could not reach billing server';
   }
+  btnLoading(btn, false);
 }
 
 // Step 8: Done
