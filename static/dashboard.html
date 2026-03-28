@@ -513,16 +513,10 @@
       </div>
     </div>
     <div>
-      <div class="panel" style="margin-bottom:8px;">
-        <div class="panel-header">Needs Action <span id="action-badge" class="badge">0</span></div>
-        <div class="panel-body" id="needs-action-panel" style="max-height:180px;overflow-y:auto;">
-          <div class="empty-state">No items need attention</div>
-        </div>
-      </div>
       <div class="panel">
-        <div class="panel-header">Team <span id="people-badge" class="badge">0</span></div>
-        <div class="panel-body" id="people-panel" style="max-height:180px;overflow-y:auto;">
-          <div class="empty-state">No activity</div>
+        <div class="panel-header">Needs Action <span id="action-badge" class="badge">0</span></div>
+        <div class="panel-body" id="needs-action-panel" style="max-height:400px;overflow-y:auto;">
+          <div class="empty-state">No items need attention</div>
         </div>
       </div>
     </div>
@@ -892,7 +886,6 @@ function renderBriefing(data) {
   if (!topics.length) {
     panel.innerHTML = '<div class="empty-state">No topics to report. Start a session or wait for team activity.</div>';
     renderNeedsAction(data);
-    renderBriefingPeople(data);
     return;
   }
 
@@ -943,7 +936,6 @@ function renderBriefing(data) {
 
   // Render side panels
   renderNeedsAction(data);
-  renderBriefingPeople(data);
   renderBriefingConflicts(data);
 }
 

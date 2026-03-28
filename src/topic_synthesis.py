@@ -36,10 +36,10 @@ Output this exact JSON structure (no markdown fences, just raw JSON):
   ],
   "needs_action": [
     {
-      "what": "specific thing needing attention",
-      "why": "brief reason",
-      "who": ["relevant people"],
-      "priority": "critical|warning|info"
+      "what": "specific concrete blocker, deadline, or required action",
+      "why": "what breaks or stalls if this isn't addressed",
+      "who": ["people blocked or responsible"],
+      "priority": "critical|warning"
     }
   ],
   "conflicts": [
@@ -60,6 +60,9 @@ Rules:
 - Keep it tight — max 5 topics, max 3 needs_action, max 2 conflicts
 - Keep each summary under 30 words
 - Max 3 items per decisions/blockers/actions/questions array
+- needs_action is ONLY for concrete blockers (someone can't proceed) or hard deadlines
+  — NOT for discussion topics, ideas, opinions, or things that would be "nice to do"
+  — if nothing is truly blocked or deadline-driven, return empty needs_action array
 - If nothing fits a section, return empty array
 """
 
