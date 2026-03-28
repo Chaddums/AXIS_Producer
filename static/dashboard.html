@@ -1749,9 +1749,7 @@ async function poll() {
           }
         }
       }
-      renderPeople();
-      renderConflicts();
-      renderBranches();
+      // People/conflicts now rendered by briefing view
 
       // Beep on critical
       if (feedEvents.some(e => classifyPriority(e) === 'critical')) playBeep();
