@@ -53,10 +53,9 @@ def check_prerequisites() -> bool:
         print("  Set it with: set ANTHROPIC_API_KEY=sk-ant-...")
         print()
 
-    settings_path = os.path.join(os.path.dirname(__file__), "tray_settings.json")
-    if not os.path.exists(settings_path):
+    from settings import Settings, SETTINGS_PATH
+    if not os.path.exists(SETTINGS_PATH):
         # Create default settings — NUX will handle onboarding
-        from settings import Settings
         Settings().save()
         print("  First launch — NUX will open in browser.")
 
