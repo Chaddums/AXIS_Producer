@@ -312,6 +312,11 @@
   }
   .person-chip .person-topics { font-size: 9px; color: #64748b; display: block; }
 
+  /* Resolved/dismissed cards */
+  .resolved-card { opacity: 0.35 !important; pointer-events: none; }
+  .resolved-card .topic-title,
+  .resolved-card .event-summary { text-decoration: line-through; color: #64748b; }
+
   /* Source indicators */
   .source-badge {
     display: inline-block;
@@ -1115,19 +1120,27 @@ function _getItemLabel(type, idx) {
   return `Item ${idx}`;
 }
 
+function _findCard(type, idx) {
+  // Topics and actions use id="type-idx", events use data-id
+  if (type === 'event') return document.querySelector(`[data-id="${idx}"]`);
+  return document.getElementById(`${type}-${idx}`);
+}
+
 function addToBacklog(type, idx) {
   const label = _getItemLabel(type, idx);
-  const entry = { type, idx, label, added: new Date().toISOString() };
-  _backlog.push(entry);
+  _backlog.push({ type, idx, label, added: new Date().toISOString() });
   saveBacklog();
-  const el = document.getElementById(`${type}-${idx}`);
+  const el = _findCard(type, idx);
   if (el) {
-    const badge = document.createElement('span');
-    badge.className = 'source-badge system';
-    badge.textContent = 'BACKLOG';
-    badge.style.marginLeft = '6px';
-    const title = el.querySelector('.topic-title, .event-summary, div:first-child');
-    if (title) title.appendChild(badge);
+    const existing = el.querySelector('.backlog-tag');
+    if (!existing) {
+      const badge = document.createElement('span');
+      badge.className = 'source-badge system backlog-tag';
+      badge.textContent = 'BACKLOG';
+      badge.style.marginLeft = '6px';
+      const target = el.querySelector('.topic-title, .event-summary') || el.firstElementChild;
+      if (target) target.appendChild(badge);
+    }
   }
 }
 
@@ -1135,18 +1148,17 @@ function markResolved(type, idx) {
   const label = _getItemLabel(type, idx);
   _resolved.push({ type, idx, label, resolved: new Date().toISOString() });
   saveResolved();
-  const el = document.getElementById(`${type}-${idx}`);
+  const el = _findCard(type, idx);
   if (el) {
-    el.style.opacity = '0.4';
-    el.style.textDecoration = 'line-through';
+    el.style.opacity = '0.35';
+    el.classList.add('resolved-card');
   }
 }
 
 function dismissItem(type, idx) {
-  const key = `${type}-${idx}`;
-  _dismissed.add(key);
+  _dismissed.add(`${type}-${idx}`);
   saveDismissed();
-  const el = document.getElementById(key) || document.getElementById(`${type}-${idx}`);
+  const el = _findCard(type, idx);
   if (el) el.style.display = 'none';
 }
 
