@@ -465,6 +465,26 @@ async function loadDashboardConfig() {
     TEAM_ID = cfg.team_id || '';
     SETUP_COMPLETED_AT = cfg.setup_completed_at || '';
 
+    // Apply workspace-aware panel labels
+    if (cfg.panel_labels) {
+      const labels = cfg.panel_labels;
+      const panels = document.querySelectorAll('.panel-header');
+      panels.forEach(p => {
+        const text = p.childNodes[0];
+        if (!text) return;
+        const t = text.textContent.trim();
+        if (t === 'Team Activity' && labels.workstreams) {
+          // Keep Team Activity as-is
+        }
+        if (t.startsWith('Conflicts')) {
+          text.textContent = labels.alerts + ' ';
+        }
+      });
+      // Update terminology for event rendering
+      window._panelLabels = labels;
+      window._terminology = cfg.output_terminology || {};
+    }
+
     // Solo mode: no cloud sync = personal workspace, hide team panels
     if (!cfg.cloud_sync) {
       document.body.classList.add('solo-mode');
@@ -893,9 +913,15 @@ function renderBranches() {
 // ============================================================
 // Rendering: Feed
 // ============================================================
+function remapLabel(label) {
+  const t = window._terminology || {};
+  return t[label] || label;
+}
+
 function renderEventHtml(e, isNew) {
   const priority = classifyPriority(e);
   const files = (e.files || []).map(shortFile);
+  const area = e.area ? remapLabel(e.area) : '';
 
   return `<div class="event ${isNew ? 'new ' : ''}priority-${priority}" data-id="${e.id}">
     <span class="event-time">${timeStr(e.ts)}</span>
@@ -903,7 +929,7 @@ function renderEventHtml(e, isNew) {
     <div class="event-body">
       <div class="event-summary">${escapeHtml(e.summary || '')}</div>
       ${files.length ? `<div class="event-files">${files.join(', ')}</div>` : ''}
-      <div class="event-meta">${escapeHtml(e.stream || '')}${e.area ? ' / ' + escapeHtml(e.area) : ''}</div>
+      <div class="event-meta">${escapeHtml(e.stream || '')}${area ? ' / ' + escapeHtml(area) : ''}</div>
     </div>
     <span class="event-type">${escapeHtml(e.event_type || '?')}</span>
     <button class="event-reply-btn" onclick="toggleThread(${e.id})" title="Reply">&#8617;</button>

@@ -105,6 +105,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             s = Settings.load()
             cfg = asdict(s)
             cfg["has_auth"] = bool(s.auth_token)
+            cfg["panel_labels"] = s.get_panel_labels()
             self._json_response(cfg)
             return
         elif path == "/api/phone-qr":

@@ -21,6 +21,86 @@ WORKSPACE_PRESETS = {
     "agency":        {"slack_monitor": True,  "vcs_monitor": False, "calendar_monitor": True, "email_monitor": True,  "claude_monitor": False, "privacy_preset": "standard"},
 }
 
+# Terminology overrides per workspace type — remaps LLM output headers and dashboard labels
+WORKSPACE_TERMINOLOGY = {
+    "dev_team": {
+        "Decisions Locked": "Decisions Locked",
+        "Ideas Generated": "Ideas Generated",
+        "Open Questions": "Open Questions",
+        "Action Items": "Action Items",
+        "Watch List": "Watch List",
+        "Blockers": "Blockers",
+        "Key Discussion": "Key Discussion",
+        # Dashboard panel labels
+        "_panel_workstreams": "Branches",
+        "_panel_blocked": "Blockers",
+        "_panel_alerts": "Conflicts & Alerts",
+    },
+    "business_team": {
+        "Decisions Locked": "Decisions Made",
+        "Ideas Generated": "Ideas & Proposals",
+        "Open Questions": "Open Questions",
+        "Action Items": "Action Items",
+        "Watch List": "Risks & Concerns",
+        "Blockers": "Waiting On",
+        "Key Discussion": "Key Takeaways",
+        "_panel_workstreams": "Projects",
+        "_panel_blocked": "Waiting On",
+        "_panel_alerts": "Deadlines & Flags",
+    },
+    "healthcare": {
+        "Decisions Locked": "Treatment Plans",
+        "Ideas Generated": "Notes & Observations",
+        "Open Questions": "Follow-up Questions",
+        "Action Items": "Follow-ups",
+        "Watch List": "Monitor",
+        "Blockers": "Pending",
+        "Key Discussion": "Case Notes",
+        "_panel_workstreams": "Patients",
+        "_panel_blocked": "Pending",
+        "_panel_alerts": "Urgent Flags",
+    },
+    "agency": {
+        "Decisions Locked": "Decisions Locked",
+        "Ideas Generated": "Creative Ideas",
+        "Open Questions": "Open Questions",
+        "Action Items": "Deliverables",
+        "Watch List": "At Risk",
+        "Blockers": "Pending Approval",
+        "Key Discussion": "Key Discussion",
+        "_panel_workstreams": "Clients",
+        "_panel_blocked": "Pending Approval",
+        "_panel_alerts": "Deadlines",
+    },
+}
+
+# System prompt context injected per workspace type
+WORKSPACE_PROMPT_CONTEXT = {
+    "dev_team": (
+        "This is a software development team. They discuss code, architecture, "
+        "bugs, features, git branches, deployments, and technical tradeoffs. "
+        "Blockers typically involve dependencies, code reviews, or tooling issues."
+    ),
+    "business_team": (
+        "This is a business team. They discuss projects, strategy, clients, "
+        "revenue, timelines, and organizational decisions. 'Blockers' here means "
+        "anything someone is waiting on before they can proceed — approvals, "
+        "deliverables from another team, vendor responses, budget sign-off."
+    ),
+    "healthcare": (
+        "This is a healthcare team. They discuss patients, treatments, scheduling, "
+        "and clinical observations. Use clinical framing: 'Treatment Plans' not "
+        "'Decisions', 'Follow-ups' not 'Action Items', 'Pending' not 'Blockers'. "
+        "Never include patient identifiers (names, DOB, SSN) in output — use "
+        "role descriptions only (e.g. 'the patient with the knee issue')."
+    ),
+    "agency": (
+        "This is a creative/consulting agency. They discuss client work, campaigns, "
+        "deliverables, timelines, and creative direction. 'Blockers' here means "
+        "pending client approvals, asset delivery, or stakeholder feedback."
+    ),
+}
+
 
 @dataclass
 class Settings:
@@ -94,14 +174,33 @@ class Settings:
             self.output_terminology = {}
 
     def apply_workspace_preset(self, workspace_type: str):
-        """Apply a workspace preset, setting monitor flags and privacy level."""
+        """Apply a workspace preset — monitor flags, terminology, and prompt context."""
         preset = WORKSPACE_PRESETS.get(workspace_type)
         if not preset:
             return
         self.workspace_type = workspace_type
         for key, value in preset.items():
             setattr(self, key, value)
+
+        # Apply terminology overrides (skip _panel_ keys — those are for the dashboard)
+        terminology = WORKSPACE_TERMINOLOGY.get(workspace_type, {})
+        self.output_terminology = {k: v for k, v in terminology.items() if not k.startswith("_")}
+
+        # Apply workspace context for LLM prompt
+        prompt_ctx = WORKSPACE_PROMPT_CONTEXT.get(workspace_type, "")
+        if prompt_ctx:
+            self.workspace_context = prompt_ctx
+
         self.save()
+
+    def get_panel_labels(self) -> dict:
+        """Get dashboard panel labels for the current workspace type."""
+        terminology = WORKSPACE_TERMINOLOGY.get(self.workspace_type, {})
+        return {
+            "workstreams": terminology.get("_panel_workstreams", "Branches"),
+            "blocked": terminology.get("_panel_blocked", "Blockers"),
+            "alerts": terminology.get("_panel_alerts", "Conflicts & Alerts"),
+        }
 
     @property
     def log_path(self) -> str:

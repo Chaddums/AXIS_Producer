@@ -240,9 +240,19 @@ def push_events(items: list[tuple[str, str]], who: str,
         "Blockers": "blocker",
         "Key Discussion": "discussion",
     }
+    CATEGORY_TO_PRIORITY = {
+        "Decisions Locked": "success",
+        "Ideas Generated": "info",
+        "Open Questions": "info",
+        "Action Items": "warning",
+        "Watch List": "warning",
+        "Blockers": "critical",
+        "Key Discussion": "ambient",
+    }
     events = []
     for category, text in items:
         event_type = CATEGORY_TO_EVENT_TYPE.get(category, "note")
+        priority = CATEGORY_TO_PRIORITY.get(category, "info")
         events.append({
             "team_id": team_id,
             "session_id": f"loadtest_{who.lower().replace(' ', '_')}",
@@ -252,7 +262,7 @@ def push_events(items: list[tuple[str, str]], who: str,
             "area": category,
             "files": [],
             "summary": text,
-            "raw": {"source": "load_test", "category": category},
+            "raw": {"source": "load_test", "category": category, "priority": priority},
         })
     if events:
         count = backend.push_events(events)
@@ -377,8 +387,8 @@ def main():
     parser.add_argument("--llm-model", default="", help="LLM model override")
     parser.add_argument("--stagger", type=float, default=5.0,
                         help="Seconds between bot launches")
-    parser.add_argument("--batch-interval", type=float, default=15.0,
-                        help="Seconds between batches per bot (simulates real-time)")
+    parser.add_argument("--batch-interval", type=float, default=90.0,
+                        help="Seconds between batches per bot (default 90s, real sessions use 300s)")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
