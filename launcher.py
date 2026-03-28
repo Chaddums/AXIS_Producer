@@ -19,6 +19,7 @@ import argparse
 import io
 import json
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -66,9 +67,13 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     """HTTP handler that serves static files + /api/transcribe endpoint."""
 
     whisper_model = "base.en"  # class-level, set by factory
+    _static_dir = None  # class-level, set by start_http_server
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        # Serve from static/ directory regardless of cwd
+        directory = self._static_dir or os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "static")
+        super().__init__(*args, directory=directory, **kwargs)
 
     _phone_mic = None  # class-level, set by launcher
 
@@ -76,17 +81,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         path = urlparse(self.path).path
 
         # First-launch redirect: no auth token → NUX
-        if path in ("/", "/dashboard.html"):
+        if path in ("/", "/index.html", "/dashboard.html"):
             from settings import Settings
             s = Settings.load()
             if not s.auth_token:
-                nux_path = os.path.join(
-                    os.path.dirname(os.path.abspath(__file__)), "static", "nux.html")
-                if os.path.exists(nux_path):
-                    self.send_response(302)
-                    self.send_header("Location", "/nux.html")
-                    self.end_headers()
-                    return
+                self.send_response(302)
+                self.send_header("Location", "/nux.html")
+                self.end_headers()
+                return
 
         if path == "/api/version":
             import hashlib
@@ -389,11 +391,10 @@ def start_http_server(port: int = 8080, whisper_model: str = "base.en",
     """
     project_dir = os.path.dirname(os.path.abspath(__file__))
     static_dir = os.path.join(project_dir, "static")
-    if os.path.isdir(static_dir):
-        os.chdir(static_dir)
-    else:
-        os.chdir(project_dir)
+    if not os.path.isdir(static_dir):
+        static_dir = project_dir
 
+    DashboardHandler._static_dir = static_dir
     DashboardHandler.whisper_model = whisper_model
 
     try:
