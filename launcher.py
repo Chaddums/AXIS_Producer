@@ -319,25 +319,6 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 ollama_url=settings.ollama_url,
             )
 
-            # Score relevance to current viewer
-            if settings.user_identity:
-                # Get viewer's recent areas from their own events
-                viewer_events = [e for e in events if e.get("who") == settings.user_identity]
-                viewer_areas = list(set(
-                    item.get("category", "")
-                    for e in viewer_events
-                    for item in e.get("raw", {}).get("items", [])
-                    if item.get("category")
-                ))
-                relevance = score_relevance(
-                    briefing, settings.user_identity, viewer_areas,
-                    provider=settings.llm_provider if settings.llm_api_key else "anthropic",
-                    api_key=api_key,
-                    model=settings.llm_model,
-                    ollama_url=settings.ollama_url,
-                )
-                briefing["relevance"] = relevance
-
             self._json_response(briefing)
 
         except Exception as e:

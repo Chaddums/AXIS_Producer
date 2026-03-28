@@ -1722,8 +1722,10 @@ async function poll() {
       const reversed = [...events].reverse();
       allEvents = [...reversed, ...allEvents].slice(0, 2000);
 
-      // Filter out presence for feed rendering
-      const feedEvents = reversed.filter(e => e.stream !== 'presence' && e.event_type !== 'presence');
+      // Filter to meaningful events only — batch summaries, chat, insights
+      const FEED_TYPES = new Set(['session_batch', 'chat', 'voice_chat', 'insight', 'announcement']);
+      const feedEvents = reversed.filter(e =>
+        FEED_TYPES.has(e.event_type) || (e.stream === 'chat' && e.event_type !== 'presence'));
 
       // Separate thread replies from top-level events
       const topLevel = feedEvents.filter(e => !e.parent_id);
@@ -1790,10 +1792,9 @@ async function init() {
     }
     if (history.length > 0) {
       allEvents = history;
-      lastEventId = history[0].id;
+      lastEventId = Math.max(...history.map(e => e.id));
 
       updatePresenceFromEvents();
-
       renderFeed();
     }
     if (statusEl) {
