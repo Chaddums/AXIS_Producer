@@ -397,6 +397,8 @@ def main():
                         help="Seconds between bot launches")
     parser.add_argument("--batch-interval", type=float, default=90.0,
                         help="Seconds between batches per bot (default 90s, real sessions use 300s)")
+    parser.add_argument("--sources", type=str, default="",
+                        help="Comma-separated extra sources: git,slack,p4v,email (adds simulators)")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -462,8 +464,40 @@ def main():
         t = threading.Thread(target=bot.run, name=f"bot-{i}-{name}", daemon=True)
         threads.append((t, bot))
 
+    # Add source simulators if requested
+    sources = [s.strip().lower() for s in args.sources.split(",") if s.strip()] if args.sources else []
+    if sources:
+        from source_simulators import GitSimulator, SlackSimulator, P4VSimulator, EmailSimulator
+        people = [BOT_PERSONAS[i % len(BOT_PERSONAS)] for i in range(args.bots)]
+
+        for src in sources:
+            if src == "git":
+                sim = GitSimulator(backend, settings.team_id,
+                                   random.choice(people), verbose=args.verbose)
+                t = threading.Thread(target=sim.run, name="git-sim", daemon=True)
+                threads.append((t, sim))
+            elif src == "slack":
+                sim = SlackSimulator(backend, settings.team_id, people,
+                                     verbose=args.verbose)
+                t = threading.Thread(target=sim.run, name="slack-sim", daemon=True)
+                threads.append((t, sim))
+            elif src == "p4v":
+                for person in people[:3]:
+                    sim = P4VSimulator(backend, settings.team_id, person,
+                                       verbose=args.verbose)
+                    t = threading.Thread(target=sim.run, name=f"p4v-{person}", daemon=True)
+                    threads.append((t, sim))
+            elif src == "email":
+                for person in people[:3]:
+                    sim = EmailSimulator(backend, settings.team_id, person,
+                                         verbose=args.verbose)
+                    t = threading.Thread(target=sim.run, name=f"email-{person}", daemon=True)
+                    threads.append((t, sim))
+
+        print(f"  Sources:     {', '.join(sources)}")
+
     # Launch with stagger
-    print(f"\nLaunching {args.bots} bots...")
+    print(f"\nLaunching {args.bots} bots + {len(sources)} source simulators...")
     for i, (t, bot) in enumerate(threads):
         t.start()
         if i < len(threads) - 1:

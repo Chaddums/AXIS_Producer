@@ -312,6 +312,28 @@
   }
   .person-chip .person-topics { font-size: 9px; color: #64748b; display: block; }
 
+  /* Source indicators */
+  .source-badge {
+    display: inline-block;
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .source-badge.voice { background: #1e293b; color: #4ac0ff; }
+  .source-badge.git { background: #1a1e2e; color: #f97316; }
+  .source-badge.slack { background: #1a1e2e; color: #e879f9; }
+  .source-badge.p4v { background: #1a1e2e; color: #22d3ee; }
+  .source-badge.email { background: #1a1e2e; color: #fbbf24; }
+  .source-badge.chat { background: #1e293b; color: #34d399; }
+  .source-badge.system { background: #1e293b; color: #94a3b8; }
+  .source-badge.zoom { background: #1a1e2e; color: #60a5fa; }
+  .source-badge.teams { background: #1a1e2e; color: #818cf8; }
+
   /* Batch cards */
   .batch-card { cursor: pointer; }
   .batch-card:hover { background: #151d2e; }
@@ -1307,6 +1329,18 @@ function renderBranches() {
 // ============================================================
 // Rendering: Feed
 // ============================================================
+function sourceBadge(stream) {
+  const s = (stream || 'voice').toLowerCase();
+  const labels = {
+    voice: 'voice', git: 'git', slack: 'slack', p4v: 'p4v',
+    email: 'email', chat: 'chat', system: 'sys', zoom: 'zoom',
+    teams: 'teams', git_health: 'git',
+  };
+  const label = labels[s] || s;
+  const cls = labels[s] || 'system';
+  return `<span class="source-badge ${cls}">${label}</span>`;
+}
+
 function remapLabel(label) {
   const t = window._terminology || {};
   return t[label] || label;
@@ -1351,8 +1385,8 @@ function renderEventHtml(e, isNew) {
       <span class="event-time">${timeStr(e.ts)}</span>
       <span class="event-who ${whoColor(e.who)}">${escapeHtml(e.who)}</span>
       <div class="event-body">
-        <div class="event-summary">${escapeHtml(e.summary || '')}</div>
-        <div class="event-meta">session batch &bull; ${itemCount} items &bull; click to expand</div>
+        <div class="event-summary">${sourceBadge(e.stream)}${escapeHtml(e.summary || '')}</div>
+        <div class="event-meta">${itemCount} items &bull; click to expand</div>
         <div id="batch-detail-${e.id}" class="batch-detail" style="display:none" onclick="event.stopPropagation()">
           ${detailHtml}
         </div>
@@ -1368,9 +1402,9 @@ function renderEventHtml(e, isNew) {
     <span class="event-time">${timeStr(e.ts)}</span>
     <span class="event-who ${whoColor(e.who)}">${escapeHtml(e.who)}</span>
     <div class="event-body">
-      <div class="event-summary">${escapeHtml(e.summary || '')}</div>
+      <div class="event-summary">${sourceBadge(e.stream)}${escapeHtml(e.summary || '')}</div>
       ${files.length ? `<div class="event-files">${files.join(', ')}</div>` : ''}
-      <div class="event-meta">${escapeHtml(e.stream || '')}${area ? ' / ' + escapeHtml(area) : ''}</div>
+      ${area ? `<div class="event-meta">${escapeHtml(area)}</div>` : ''}
     </div>
     <span class="event-type">${escapeHtml(e.event_type || '?')}</span>
     <button class="event-reply-btn" onclick="toggleThread(${e.id})" title="Reply">&#8617;</button>
