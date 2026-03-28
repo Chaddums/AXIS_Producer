@@ -228,46 +228,52 @@ def extract_items(notes: str) -> list[tuple[str, str]]:
     return items
 
 
-def push_events(items: list[tuple[str, str]], who: str,
-                backend: BackendClient, team_id: str):
-    """Push extracted items as events to the backend."""
-    CATEGORY_TO_EVENT_TYPE = {
-        "Decisions Locked": "decision",
-        "Ideas Generated": "idea",
-        "Open Questions": "question",
-        "Action Items": "action_item",
-        "Watch List": "watch",
-        "Blockers": "blocker",
-        "Key Discussion": "discussion",
-    }
-    CATEGORY_TO_PRIORITY = {
+def push_batch_event(items: list[tuple[str, str]], notes: str, who: str,
+                     backend: BackendClient, team_id: str):
+    """Push one summary event per batch with items nested inside."""
+    if not items:
+        return 0
+
+    # Build summary line: "3 decisions, 2 blockers, 1 action item"
+    from collections import Counter
+    cat_counts = Counter(cat for cat, _ in items)
+    summary_parts = []
+    for cat, count in cat_counts.most_common():
+        summary_parts.append(f"{count} {cat.lower()}")
+    summary_line = ", ".join(summary_parts)
+
+    # Determine highest priority from items
+    CATEGORY_PRIORITY = {
+        "Blockers": "critical",
+        "Action Items": "warning",
+        "Watch List": "warning",
         "Decisions Locked": "success",
         "Ideas Generated": "info",
         "Open Questions": "info",
-        "Action Items": "warning",
-        "Watch List": "warning",
-        "Blockers": "critical",
         "Key Discussion": "ambient",
     }
-    events = []
-    for category, text in items:
-        event_type = CATEGORY_TO_EVENT_TYPE.get(category, "note")
-        priority = CATEGORY_TO_PRIORITY.get(category, "info")
-        events.append({
-            "team_id": team_id,
-            "session_id": f"loadtest_{who.lower().replace(' ', '_')}",
-            "stream": "voice",
-            "event_type": event_type,
-            "who": who,
-            "area": category,
-            "files": [],
-            "summary": text,
-            "raw": {"source": "load_test", "category": category, "priority": priority},
-        })
-    if events:
-        count = backend.push_events(events)
-        return count
-    return 0
+    priorities = [CATEGORY_PRIORITY.get(cat, "info") for cat, _ in items]
+    PRIORITY_RANK = {"critical": 4, "warning": 3, "success": 2, "info": 1, "ambient": 0}
+    top_priority = max(priorities, key=lambda p: PRIORITY_RANK.get(p, 0))
+
+    event = {
+        "team_id": team_id,
+        "session_id": f"loadtest_{who.lower().replace(' ', '_')}",
+        "stream": "voice",
+        "event_type": "session_batch",
+        "who": who,
+        "area": None,
+        "files": [],
+        "summary": summary_line,
+        "raw": {
+            "source": "load_test",
+            "priority": top_priority,
+            "items": [{"category": cat, "text": text} for cat, text in items],
+            "notes": notes,
+        },
+    }
+    count = backend.push_events([event])
+    return count
 
 
 class BotWorker:
@@ -355,11 +361,11 @@ class BotWorker:
                     )
                     items = extract_items(notes)
                     if items:
-                        count = push_events(items, self.name, self.backend, self.team_id)
+                        count = push_batch_event(items, notes, self.name, self.backend, self.team_id)
                         self.stats["batches"] += 1
-                        self.stats["events"] += count
+                        self.stats["events"] += len(items)
                         if self.verbose:
-                            print(f"  {tag} pushed {count} events")
+                            print(f"  {tag} pushed 1 batch ({len(items)} items)")
                     else:
                         print(f"  {tag} batch {i+1} — no items extracted")
                 except Exception as e:

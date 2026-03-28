@@ -258,6 +258,28 @@
   .event-status-label.resolved { background: #064e3b; color: #34d399; }
   .event-status-label.dismissed { background: #1e293b; color: #64748b; }
 
+  /* Batch cards */
+  .batch-card { cursor: pointer; }
+  .batch-card:hover { background: #151d2e; }
+  .batch-detail {
+    margin-top: 8px;
+    padding: 8px 0;
+    border-top: 1px solid #1e293b;
+  }
+  .batch-category {
+    color: #4ac0ff;
+    font-size: 11px;
+    margin-top: 6px;
+    margin-bottom: 2px;
+  }
+  .batch-category:first-child { margin-top: 0; }
+  .batch-item {
+    color: #c8d0e0;
+    font-size: 12px;
+    padding-left: 8px;
+    line-height: 1.5;
+  }
+
   /* Thread panel */
   .thread-panel {
     margin-left: 50px;
@@ -965,12 +987,34 @@ function remapLabel(label) {
   return t[label] || label;
 }
 
+function renderBatchItems(items) {
+  if (!items || !items.length) return '';
+  const grouped = {};
+  items.forEach(i => {
+    const cat = remapLabel(i.category || 'Other');
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(i.text);
+  });
+  let html = '';
+  for (const [cat, texts] of Object.entries(grouped)) {
+    html += `<div class="batch-category"><strong>${escapeHtml(cat)}</strong></div>`;
+    texts.forEach(t => { html += `<div class="batch-item">- ${escapeHtml(t)}</div>`; });
+  }
+  return html;
+}
+
+function toggleBatchDetail(id) {
+  const el = document.getElementById('batch-detail-' + id);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
 function renderEventHtml(e, isNew) {
   const priority = classifyPriority(e);
   const files = (e.files || []).map(shortFile);
   const area = e.area ? remapLabel(e.area) : '';
   const status = e.status || 'open';
   const statusClass = status !== 'open' ? ` status-${status}` : '';
+  const raw = e.raw || {};
 
   // Status label for resolved/dismissed
   let statusLabel = '';
@@ -986,6 +1030,27 @@ function renderEventHtml(e, isNew) {
     </div>`;
   }
 
+  // Session batch: expandable card with nested items
+  if (e.event_type === 'session_batch' && raw.items) {
+    const itemCount = raw.items.length;
+    const detailHtml = renderBatchItems(raw.items);
+    return `<div class="event batch-card ${isNew ? 'new ' : ''}priority-${priority}${statusClass}" data-id="${e.id}" data-status="${status}" onclick="toggleBatchDetail(${e.id})">
+      <span class="event-time">${timeStr(e.ts)}</span>
+      <span class="event-who ${whoColor(e.who)}">${escapeHtml(e.who)}</span>
+      <div class="event-body">
+        <div class="event-summary">${escapeHtml(e.summary || '')}${statusLabel}</div>
+        <div class="event-meta">session batch &bull; ${itemCount} items &bull; click to expand</div>
+        <div id="batch-detail-${e.id}" class="batch-detail" style="display:none" onclick="event.stopPropagation()">
+          ${detailHtml}
+        </div>
+      </div>
+      <span class="event-type">batch</span>
+      ${actionBtns}
+      <button class="event-reply-btn" onclick="event.stopPropagation();toggleThread(${e.id})" title="Reply">&#8617;</button>
+    </div><div id="thread-${e.id}"></div>`;
+  }
+
+  // Regular event
   return `<div class="event ${isNew ? 'new ' : ''}priority-${priority}${statusClass}" data-id="${e.id}" data-status="${status}">
     <span class="event-time">${timeStr(e.ts)}</span>
     <span class="event-who ${whoColor(e.who)}">${escapeHtml(e.who)}</span>
@@ -1516,11 +1581,16 @@ async function init() {
       renderConflicts();
       renderBranches();
     }
-    statusEl.textContent = `Connected \u2022 ${allEvents.length} events loaded`;
-    statusEl.className = 'status connected';
+    if (statusEl) {
+      statusEl.textContent = `Connected \u2022 ${allEvents.length} events loaded`;
+      statusEl.className = 'status connected';
+    }
   } catch (err) {
-    statusEl.textContent = `Connection failed: ${err.message}`;
-    statusEl.className = 'status error';
+    console.error('Init error:', err);
+    if (statusEl) {
+      statusEl.textContent = `Connection failed: ${err.message}`;
+      statusEl.className = 'status error';
+    }
   }
 
   // Start polling

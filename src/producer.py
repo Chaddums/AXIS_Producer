@@ -145,7 +145,7 @@ class BatchProducer:
             items = self._extract_items(notes)
             if items:
                 try:
-                    self.on_items_logged(items)
+                    self.on_items_logged(items, notes)
                 except Exception:
                     pass
 
@@ -186,12 +186,12 @@ class BatchProducer:
         if self.verbose:
             print(f"  [producer] batch {self._batch_count} logged")
 
-        # Extract items and fire callback for taskbar notifications
+        # Extract items and fire callback for notifications + cloud sync
         if self.on_items_logged:
             items = self._extract_items(notes)
             if items:
                 try:
-                    self.on_items_logged(items)
+                    self.on_items_logged(items, notes)
                 except Exception as e:
                     if self.verbose:
                         print(f"  [producer] callback error: {e}")

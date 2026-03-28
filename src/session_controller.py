@@ -462,11 +462,11 @@ class SessionController:
                                   verbose=verbose)
 
         # Producer — wrap callback to also push to cloud
-        def _items_logged_wrapper(items):
+        def _items_logged_wrapper(items, notes=""):
             if self.on_items_logged:
                 self.on_items_logged(items)
             if self._cloud_sync:
-                self._cloud_sync.push_voice_batch(items)
+                self._cloud_sync.push_voice_batch(items, notes=notes)
 
         self._producer = BatchProducer(
             self._stop_event, buffer_lock, transcript_buffer,

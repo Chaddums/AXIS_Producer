@@ -158,20 +158,41 @@ class CloudSync:
         })
 
     def push_voice_batch(self, items: list[tuple[str, str]],
-                         session_id: str = ""):
-        for category, text in items:
-            self.push_event({
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "who": self._user,
-                "stream": "voice",
-                "session_id": session_id,
-                "event_type": category.lower().replace(" ", "_"),
-                "area": None,
-                "files": [],
-                "summary": text,
-                "raw": {"category": category},
-                "project": self._project,
-            })
+                         session_id: str = "", notes: str = ""):
+        """Push one summary event per batch with items nested inside."""
+        if not items:
+            return
+        from collections import Counter
+        cat_counts = Counter(cat for cat, _ in items)
+        summary_parts = [f"{count} {cat.lower()}" for cat, count in cat_counts.most_common()]
+        summary_line = ", ".join(summary_parts)
+
+        CATEGORY_PRIORITY = {
+            "Blockers": "critical", "Action Items": "warning",
+            "Watch List": "warning", "Decisions Locked": "success",
+            "Ideas Generated": "info", "Open Questions": "info",
+            "Key Discussion": "ambient",
+        }
+        PRIORITY_RANK = {"critical": 4, "warning": 3, "success": 2, "info": 1, "ambient": 0}
+        priorities = [CATEGORY_PRIORITY.get(cat, "info") for cat, _ in items]
+        top_priority = max(priorities, key=lambda p: PRIORITY_RANK.get(p, 0))
+
+        self.push_event({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "who": self._user,
+            "stream": "voice",
+            "session_id": session_id,
+            "event_type": "session_batch",
+            "area": None,
+            "files": [],
+            "summary": summary_line,
+            "raw": {
+                "priority": top_priority,
+                "items": [{"category": cat, "text": text} for cat, text in items],
+                "notes": notes,
+            },
+            "project": self._project,
+        })
 
     def push_git_event(self, event_type: str, summary: str,
                        files: list[str] | None = None,
