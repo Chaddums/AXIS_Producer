@@ -921,9 +921,14 @@ function renderBriefing(data) {
       detailHtml += '</div>';
     }
 
-    html += `<div class="topic-card priority-${t.priority || 'info'}" onclick="toggleTopicDetail(${idx})">
-      ${relHtml}
-      <div class="topic-title">${escapeHtml(t.title)}</div>
+    html += `<div class="topic-card priority-${t.priority || 'info'}" id="topic-${idx}" onclick="toggleTopicDetail(${idx})">
+      <div style="display:flex;justify-content:space-between;align-items:start;">
+        <div class="topic-title">${escapeHtml(t.title)}</div>
+        <div style="flex-shrink:0;margin-left:8px;" onclick="event.stopPropagation()">
+          <button class="event-action-btn resolve" onclick="dismissTopic(${idx})" title="Acknowledge">&#10003;</button>
+          <button class="event-action-btn dismiss" onclick="dismissTopic(${idx})" title="Dismiss">&#10005;</button>
+        </div>
+      </div>
       <div class="topic-summary">${escapeHtml(t.summary || '')}</div>
       <div class="topic-people">${escapeHtml(people)}</div>
       <div class="topic-detail" id="topic-detail-${idx}">
@@ -939,6 +944,23 @@ function renderBriefing(data) {
   renderBriefingConflicts(data);
 }
 
+function dismissTopic(idx) {
+  const el = document.getElementById('topic-' + idx);
+  if (el) {
+    el.style.opacity = '0.3';
+    el.style.pointerEvents = 'none';
+    el.querySelector('.topic-title').style.textDecoration = 'line-through';
+  }
+}
+
+function dismissAction(idx) {
+  const el = document.getElementById('action-' + idx);
+  if (el) {
+    el.style.opacity = '0.3';
+    el.style.pointerEvents = 'none';
+  }
+}
+
 function renderNeedsAction(data) {
   const panel = document.getElementById('needs-action-panel');
   const badge = document.getElementById('action-badge');
@@ -950,9 +972,15 @@ function renderNeedsAction(data) {
     return;
   }
 
-  panel.innerHTML = items.map(a => `
-    <div class="action-item priority-${a.priority || 'warning'}">
-      <div>${escapeHtml(a.what)}</div>
+  panel.innerHTML = items.map((a, i) => `
+    <div class="action-item priority-${a.priority || 'warning'}" id="action-${i}">
+      <div style="display:flex;justify-content:space-between;align-items:start;">
+        <div>${escapeHtml(a.what)}</div>
+        <div style="flex-shrink:0;margin-left:8px;">
+          <button class="event-action-btn resolve" onclick="dismissAction(${i})" title="Resolve">&#10003;</button>
+          <button class="event-action-btn dismiss" onclick="dismissAction(${i})" title="Dismiss">&#10005;</button>
+        </div>
+      </div>
       <div style="color:#94a3b8;font-size:10px;">${escapeHtml(a.why || '')}</div>
       ${a.who ? `<div class="action-who">${escapeHtml(a.who.join(', '))}</div>` : ''}
     </div>
