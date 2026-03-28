@@ -1815,7 +1815,7 @@ async function poll() {
       allEvents = [...reversed, ...allEvents].slice(0, 2000);
 
       // Filter to meaningful events only — batch summaries, chat, insights
-      const FEED_TYPES = new Set(['session_batch', 'chat', 'voice_chat', 'insight', 'announcement']);
+      const FEED_TYPES = new Set(['session_batch', 'chat', 'voice_chat', 'announcement']);
       const feedEvents = reversed.filter(e =>
         FEED_TYPES.has(e.event_type) || (e.stream === 'chat' && e.event_type !== 'presence'));
 

@@ -250,20 +250,8 @@ class SessionController:
         self._cloud_threads.append(t)
         t.start()
 
-        # Workspace insights analyzer — periodic meta-analysis of event patterns
-        if can_backend:
-            try:
-                from workspace_insights import WorkspaceInsights
-                self._insights = WorkspaceInsights(
-                    self._backend_client, self.settings.team_id, self.settings,
-                    interval=3600,  # analyze every hour
-                    verbose=verbose,
-                )
-                insight_thread = self._insights.start()
-                self._cloud_threads.append(insight_thread)
-            except Exception as e:
-                if verbose:
-                    print(f"  [insights] failed to start: {e}")
+        # Workspace insights disabled from auto-firing into the feed.
+        # Use workspace_insights.run_once() manually or via settings panel.
 
     def stop_cloud_services(self):
         """Stop Claude monitor and cloud sync."""
