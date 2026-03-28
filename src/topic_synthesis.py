@@ -57,7 +57,9 @@ Rules:
 - Blockers and unresolved questions go in needs_action
 - If two people are working on the same thing differently, flag as conflict
 - Sort topics by priority (critical first) then by number of people involved
-- Keep it tight — max 8 topics, max 5 needs_action, max 3 conflicts
+- Keep it tight — max 5 topics, max 3 needs_action, max 2 conflicts
+- Keep each summary under 30 words
+- Max 3 items per decisions/blockers/actions/questions array
 - If nothing fits a section, return empty array
 """
 
@@ -127,7 +129,7 @@ def synthesize_events(events: list[dict], provider: str = "anthropic",
             user_message=input_text,
             api_key=api_key,
             model=model,
-            max_tokens=2048,
+            max_tokens=4096,
             ollama_url=ollama_url,
         )
         import json
