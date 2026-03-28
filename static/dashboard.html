@@ -520,6 +520,7 @@
   <span id="conn-status" class="status">connecting...</span>
   <div class="spacer"></div>
   <button id="phone-mic-btn" class="header-btn" onclick="showPhoneQR()" title="Connect phone as mic">Phone Mic</button>
+  <button id="terms-btn" class="header-btn" onclick="showTermsPanel()" title="Term weights &amp; feedback">Terms</button>
   <button id="config-btn" class="header-btn" onclick="showConfigPanel()" title="Settings">Settings</button>
   <button id="account-btn" class="header-btn" onclick="showAccountPanel()" title="Account & Billing">Account</button>
   <button id="sound-toggle" class="header-btn" title="Toggle alert sounds">Sound: OFF</button>
@@ -1126,10 +1127,19 @@ function _findCard(type, idx) {
   return document.getElementById(`${type}-${idx}`);
 }
 
+function _sendFeedback(action, text, tag, theme) {
+  fetch('/api/feedback', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ action, text, tag: tag || '', theme: theme || '' }),
+  }).catch(() => {});
+}
+
 function addToBacklog(type, idx) {
   const label = _getItemLabel(type, idx);
   _backlog.push({ type, idx, label, added: new Date().toISOString() });
   saveBacklog();
+  _sendFeedback('backlog', label, type, '');
   const el = _findCard(type, idx);
   if (el) {
     const existing = el.querySelector('.backlog-tag');
@@ -1148,6 +1158,7 @@ function markResolved(type, idx) {
   const label = _getItemLabel(type, idx);
   _resolved.push({ type, idx, label, resolved: new Date().toISOString() });
   saveResolved();
+  _sendFeedback('resolve', label, type, '');
   const el = _findCard(type, idx);
   if (el) {
     el.style.opacity = '0.35';
@@ -1156,8 +1167,10 @@ function markResolved(type, idx) {
 }
 
 function dismissItem(type, idx) {
+  const label = _getItemLabel(type, idx);
   _dismissed.add(`${type}-${idx}`);
   saveDismissed();
+  _sendFeedback('dismiss', label, type, '');
   const el = _findCard(type, idx);
   if (el) el.style.display = 'none';
 }

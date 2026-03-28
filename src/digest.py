@@ -469,7 +469,16 @@ def run_digest(log_path: str, output_path: str, dry_run: bool = False,
             flat_items.append({**item, "time": batch["time"]})
 
     theme_keywords = load_training()
-    triage_result = triage_session(flat_items, theme_keywords)
+
+    # Load user feedback + term weights for scoring adjustments
+    feedback_weights = None
+    try:
+        from user_db import UserDB
+        feedback_weights = UserDB().get_effective_weights()
+    except Exception:
+        pass  # feedback DB not available — score without it
+
+    triage_result = triage_session(flat_items, theme_keywords, feedback_weights)
 
     if verbose:
         s = triage_result["summary"]

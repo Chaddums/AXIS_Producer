@@ -69,11 +69,12 @@ DEFAULT_THEME = "Game Systems"
 # ---------------------------------------------------------------------------
 
 WEIGHTS = {
-    "specificity": 25,    # Does the item name concrete things? (not vague)
-    "actionability": 25,  # Can someone act on this right now?
+    "specificity": 20,    # Does the item name concrete things? (not vague)
+    "actionability": 20,  # Can someone act on this right now?
     "context": 20,        # Does it have enough detail to understand?
     "tag_match": 15,      # Does the tag match what the item actually is?
     "theme_signal": 15,   # Does it clearly belong to a theme?
+    "feedback_signal": 10, # User feedback: follows boost, dismissals suppress
 }
 
 # ---------------------------------------------------------------------------
@@ -243,12 +244,69 @@ def check_theme_signal(item: dict, theme_keywords: dict = None) -> dict:
     }
 
 
+def check_feedback_signal(item: dict, effective_weights: dict = None) -> dict:
+    """Score adjustment based on accumulated user feedback on similar terms.
+
+    Terms from followed/backlogged items boost the score.
+    Terms from dismissed items suppress it.
+    No feedback data = neutral (5/10).
+    """
+    if not effective_weights:
+        return {
+            "check": "feedback_signal",
+            "score": WEIGHTS["feedback_signal"] // 2,  # neutral
+            "max_score": WEIGHTS["feedback_signal"],
+            "detail": "no feedback data",
+        }
+
+    from user_db import extract_terms
+    terms = extract_terms(item["text"])
+
+    if not terms:
+        return {
+            "check": "feedback_signal",
+            "score": WEIGHTS["feedback_signal"] // 2,
+            "max_score": WEIGHTS["feedback_signal"],
+            "detail": "no extractable terms",
+        }
+
+    # Sum weights for matching terms
+    total_weight = 0
+    matched = 0
+    for term in terms:
+        if term in effective_weights:
+            total_weight += effective_weights[term]["weight"]
+            matched += 1
+
+    if matched == 0:
+        score = WEIGHTS["feedback_signal"] // 2  # neutral
+    else:
+        # Normalize: avg weight per matched term, map from [-100,+100] to [0, max]
+        avg_weight = total_weight / matched
+        # Map -100..+100 to 0..max_score (midpoint = half)
+        max_score = WEIGHTS["feedback_signal"]
+        score = int(max_score * (avg_weight + 100) / 200)
+        score = max(0, min(max_score, score))
+
+    return {
+        "check": "feedback_signal",
+        "score": score,
+        "max_score": WEIGHTS["feedback_signal"],
+        "detail": f"{matched} term matches, net weight {total_weight:+.0f}",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Route: keyword → theme (equivalent to triage-app's inferTeam)
 # ---------------------------------------------------------------------------
 
-def route_to_theme(text: str, theme_keywords: dict = None) -> str:
-    """Assign an item to a project theme via keyword matching."""
+def route_to_theme(text: str, theme_keywords: dict = None,
+                   feedback_weights: dict = None) -> str:
+    """Assign an item to a project theme via keyword matching.
+
+    If feedback_weights contains terms with explicit theme assignments,
+    those can override keyword routing when they match strongly.
+    """
     if theme_keywords is None:
         theme_keywords = DEFAULT_THEME_KEYWORDS
 
@@ -269,6 +327,22 @@ def route_to_theme(text: str, theme_keywords: dict = None) -> str:
             best_hits = hits
             best_theme = theme
 
+    # Check for explicit theme overrides from user term DB
+    if feedback_weights:
+        from user_db import extract_terms
+        terms = extract_terms(text)
+        theme_votes = {}
+        for term in terms:
+            entry = feedback_weights.get(term)
+            if entry and entry.get("theme") and entry.get("source") == "explicit":
+                t = entry["theme"]
+                theme_votes[t] = theme_votes.get(t, 0) + 1
+        # Explicit theme override wins if 2+ terms agree or keyword match was weak
+        if theme_votes:
+            top_theme = max(theme_votes, key=theme_votes.get)
+            if theme_votes[top_theme] >= 2 or best_hits <= 1:
+                best_theme = top_theme
+
     return best_theme
 
 
@@ -276,14 +350,21 @@ def route_to_theme(text: str, theme_keywords: dict = None) -> str:
 # Score an item (equivalent to triage-app's scoreBug)
 # ---------------------------------------------------------------------------
 
-def score_item(item: dict, theme_keywords: dict = None) -> dict:
-    """Score a single digest item. Returns full triage result."""
+def score_item(item: dict, theme_keywords: dict = None,
+               feedback_weights: dict = None) -> dict:
+    """Score a single digest item. Returns full triage result.
+
+    Args:
+        feedback_weights: dict from UserDB.get_effective_weights() —
+            {term: {weight, theme, source}}. If provided, adds feedback_signal check.
+    """
     checks = [
         check_specificity(item),
         check_actionability(item),
         check_context(item),
         check_tag_match(item),
         check_theme_signal(item, theme_keywords),
+        check_feedback_signal(item, feedback_weights),
     ]
 
     total = sum(c["score"] for c in checks)
@@ -303,8 +384,8 @@ def score_item(item: dict, theme_keywords: dict = None) -> dict:
     theme_check = next(c for c in checks if c["check"] == "theme_signal")
     inferred_theme = theme_check.get("inferred_theme", DEFAULT_THEME)
 
-    # Override: route via full keyword matching
-    routed_theme = route_to_theme(item["text"], theme_keywords)
+    # Override: route via full keyword matching (+ term DB theme overrides)
+    routed_theme = route_to_theme(item["text"], theme_keywords, feedback_weights)
 
     return {
         "tag": item["tag"],
@@ -322,8 +403,13 @@ def score_item(item: dict, theme_keywords: dict = None) -> dict:
 # Triage a full session's items
 # ---------------------------------------------------------------------------
 
-def triage_session(items: list[dict], theme_keywords: dict = None) -> dict:
+def triage_session(items: list[dict], theme_keywords: dict = None,
+                   feedback_weights: dict = None) -> dict:
     """Score and route all items from a session.
+
+    Args:
+        feedback_weights: dict from UserDB.get_effective_weights() for
+            feedback-driven scoring adjustments.
 
     Returns:
         results: list of scored items
@@ -331,7 +417,7 @@ def triage_session(items: list[dict], theme_keywords: dict = None) -> dict:
     """
     results = []
     for item in items:
-        results.append(score_item(item, theme_keywords))
+        results.append(score_item(item, theme_keywords, feedback_weights))
 
     # Build summary
     by_grade = {}

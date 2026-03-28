@@ -127,6 +127,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         elif path == "/api/briefing":
             self._handle_briefing()
             return
+        elif path == "/api/terms":
+            self._handle_terms_get()
+            return
+        elif path == "/api/feedback/stats":
+            self._handle_feedback_stats()
+            return
         # Fall through to static file serving
         super().do_GET()
 
@@ -139,6 +145,20 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_chat()
         elif path == "/api/settings":
             self._handle_settings_update()
+        elif path == "/api/feedback":
+            self._handle_feedback()
+        elif path == "/api/terms":
+            self._handle_terms_post()
+        elif path == "/api/terms/import":
+            self._handle_terms_import()
+        else:
+            self.send_error(404, "Not Found")
+
+    def do_DELETE(self):
+        path = urlparse(self.path).path
+
+        if path == "/api/terms":
+            self._handle_terms_delete()
         else:
             self.send_error(404, "Not Found")
 
@@ -325,6 +345,116 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     setattr(s, key, value)
             s.save()
             self._json_response({"ok": True})
+        except Exception as e:
+            self._json_response({"error": str(e)}, 500)
+
+    def _handle_feedback(self):
+        """Record a user feedback action (dismiss/resolve/follow/backlog)."""
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(content_length))
+
+            action = body.get("action", "")
+            text = body.get("text", "")
+            if not action or not text:
+                self._json_response({"error": "action and text required"}, 400)
+                return
+
+            from user_db import UserDB
+            db = UserDB()
+            db.record_feedback(action, text, body.get("tag", ""), body.get("theme", ""))
+            db.close()
+            self._json_response({"ok": True})
+        except Exception as e:
+            self._json_response({"error": str(e)}, 500)
+
+    def _handle_feedback_stats(self):
+        """Return feedback action counts."""
+        try:
+            from user_db import UserDB
+            db = UserDB()
+            stats = db.get_feedback_stats()
+            signals = db.get_term_signals()
+            db.close()
+            # Return top 20 signals by absolute weight
+            top_signals = sorted(signals.items(), key=lambda x: abs(x[1]), reverse=True)[:20]
+            self._json_response({
+                "action_counts": stats,
+                "top_signals": [{"term": t, "weight": w} for t, w in top_signals],
+            })
+        except Exception as e:
+            self._json_response({"error": str(e)}, 500)
+
+    def _handle_terms_get(self):
+        """Return all user-defined terms."""
+        try:
+            from user_db import UserDB
+            db = UserDB()
+            terms = db.get_all_terms()
+            db.close()
+            self._json_response({"terms": terms})
+        except Exception as e:
+            self._json_response({"error": str(e)}, 500)
+
+    def _handle_terms_post(self):
+        """Add or update a user-defined term."""
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(content_length))
+
+            term = body.get("term", "").strip()
+            if not term:
+                self._json_response({"error": "term required"}, 400)
+                return
+
+            from user_db import UserDB
+            db = UserDB()
+            db.set_term(
+                term,
+                int(body.get("weight", 0)),
+                body.get("theme", ""),
+                body.get("notes", ""),
+            )
+            db.close()
+            self._json_response({"ok": True})
+        except Exception as e:
+            self._json_response({"error": str(e)}, 500)
+
+    def _handle_terms_delete(self):
+        """Remove a user-defined term."""
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(content_length))
+
+            term = body.get("term", "").strip()
+            if not term:
+                self._json_response({"error": "term required"}, 400)
+                return
+
+            from user_db import UserDB
+            db = UserDB()
+            deleted = db.delete_term(term)
+            db.close()
+            self._json_response({"ok": True, "deleted": deleted})
+        except Exception as e:
+            self._json_response({"error": str(e)}, 500)
+
+    def _handle_terms_import(self):
+        """Bulk import terms from JSON array."""
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(content_length))
+
+            terms_list = body.get("terms", [])
+            if not terms_list:
+                self._json_response({"error": "terms array required"}, 400)
+                return
+
+            from user_db import UserDB
+            db = UserDB()
+            count = db.import_terms(terms_list)
+            db.close()
+            self._json_response({"ok": True, "count": count})
         except Exception as e:
             self._json_response({"error": str(e)}, 500)
 
