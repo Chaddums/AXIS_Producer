@@ -153,6 +153,27 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
+    # Common Whisper hallucinations on silence
+    _HALLUCINATIONS = {
+        "you", "thank you", "thanks for watching", "bye", "the end",
+        "thanks", "thank you for watching", "thanks for listening",
+        "subscribe", "like and subscribe", "so", "okay", "um",
+    }
+
+    @staticmethod
+    def _audio_is_silent(path: str, threshold: float = 200.0) -> bool:
+        """Check if audio file is effectively silent by RMS energy."""
+        try:
+            import numpy as np
+            import sounddevice  # noqa — ensures audio libs available
+            # Read raw audio bytes — works for WAV and WebM via faster_whisper's decoder
+            from faster_whisper.audio import decode_audio
+            audio = decode_audio(path)
+            rms = np.sqrt(np.mean(audio ** 2))
+            return rms < threshold / 32768.0  # normalized threshold
+        except Exception:
+            return False
+
     def _handle_transcribe(self):
         """Receive audio, transcribe with Whisper, return text."""
         try:
@@ -170,11 +191,20 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 temp_path = f.name
 
             try:
+                # Gate: skip transcription if audio is silence
+                if self._audio_is_silent(temp_path):
+                    self._json_response({"text": ""})
+                    return
+
                 from faster_whisper import WhisperModel
                 model = WhisperModel(self.whisper_model or "base.en",
                                      device="cpu", compute_type="int8")
                 segments, _ = model.transcribe(temp_path)
                 text = " ".join(s.text.strip() for s in segments)
+
+                # Filter known hallucinations
+                if text.strip().lower() in self._HALLUCINATIONS:
+                    text = ""
             finally:
                 os.unlink(temp_path)
 
@@ -184,7 +214,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._json_response({"error": str(e)}, 500)
 
     def _handle_chat(self):
-        """Receive a chat message and post via backend API (or direct Supabase fallback)."""
+        """Receive a chat message and post via backend API."""
         try:
             content_length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(content_length))
@@ -193,7 +223,6 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             settings = Settings.load()
 
             event = {
-                "ts": body.get("ts", ""),
                 "who": body.get("who", settings.user_identity),
                 "stream": body.get("stream", "chat"),
                 "session_id": "",
@@ -206,19 +235,24 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "parent_id": body.get("parent_id"),
             }
 
-            if settings.backend_url and settings.auth_token and settings.team_id:
-                from backend_client import BackendClient
-                client = BackendClient(settings.backend_url, settings.auth_token)
-                event["team_id"] = settings.team_id
-                count = client.push_events([event])
-                self._json_response({"ok": count > 0})
-            elif settings.supabase_url and settings.supabase_key:
-                from cloud_db import CloudDB
-                db = CloudDB(settings.supabase_url, settings.supabase_key)
-                result = db.insert_event(event)
-                self._json_response({"ok": True, "event": result})
+            if not settings.backend_url:
+                self._json_response({"error": "No backend URL configured. Run setup first."}, 503)
+                return
+            if not settings.auth_token:
+                self._json_response({"error": "Not logged in. Run setup to sign in."}, 401)
+                return
+            if not settings.team_id:
+                self._json_response({"error": "No team configured. Run setup to create a team."}, 400)
+                return
+
+            from backend_client import BackendClient
+            client = BackendClient(settings.backend_url, settings.auth_token)
+            event["team_id"] = settings.team_id
+            count = client.push_events([event])
+            if count > 0:
+                self._json_response({"ok": True})
             else:
-                self._json_response({"error": "No backend or Supabase configured"}, 503)
+                self._json_response({"error": "Backend rejected the message. Check your connection and auth."}, 502)
 
         except Exception as e:
             self._json_response({"error": str(e)}, 500)

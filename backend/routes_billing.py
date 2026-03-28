@@ -18,6 +18,25 @@ def init(config: Config):
     stripe.api_key = config.stripe_secret_key
 
 
+def _resolve_coupon(promo):
+    """Extract the coupon object from a Stripe PromotionCode, handling all shapes."""
+    coupon = promo.get("coupon", None) if isinstance(promo, dict) else getattr(promo, "coupon", None)
+    if coupon is None or isinstance(coupon, str):
+        coupon_id = coupon or (promo.get("coupon") if isinstance(promo, dict) else getattr(promo, "coupon", None))
+        if isinstance(coupon_id, str):
+            coupon = stripe.Coupon.retrieve(coupon_id)
+        else:
+            coupon = coupon_id or {}
+    return coupon
+
+
+def _coupon_percent_off(coupon) -> float:
+    """Get percent_off from a coupon object/dict, handling all Stripe response shapes."""
+    if isinstance(coupon, dict):
+        return float(coupon.get("percent_off", 0) or 0)
+    return float(getattr(coupon, "percent_off", 0) or 0)
+
+
 # --- Stripe product/price IDs (set after creating products in Stripe dashboard) ---
 # These should be env vars in production. Hardcoded here for clarity.
 # Override via config if needed.
@@ -62,10 +81,8 @@ async def redeem_code(req: RedeemCodeRequest, user: dict = Depends(auth.get_curr
         raise HTTPException(status_code=400, detail="Invalid code")
 
     promo = promos.data[0]
-    coupon = promo.get("coupon", {}) if isinstance(promo, dict) else getattr(promo, "coupon", None)
-    if isinstance(coupon, str):
-        coupon = stripe.Coupon.retrieve(coupon)
-    pct = getattr(coupon, "percent_off", None) or (coupon.get("percent_off") if isinstance(coupon, dict) else 0) or 0
+    coupon = _resolve_coupon(promo)
+    pct = _coupon_percent_off(coupon)
 
     # Only allow this path for 100% off coupons
     if pct != 100:
@@ -102,16 +119,9 @@ async def check_promo(code: str):
         if not promos.data:
             return {"valid": False}
         promo = promos.data[0]
-        coupon = promo.get("coupon", {}) if isinstance(promo, dict) else getattr(promo, "coupon", None)
-        if coupon is None:
-            # Fetch coupon separately if not expanded
-            coupon_id = promo.get("coupon") if isinstance(promo, dict) else getattr(promo, "coupon", None)
-            if isinstance(coupon_id, str):
-                coupon = stripe.Coupon.retrieve(coupon_id)
-            else:
-                coupon = coupon_id
-        pct = getattr(coupon, "percent_off", None) or (coupon.get("percent_off") if isinstance(coupon, dict) else 0) or 0
-        amt = getattr(coupon, "amount_off", None) or (coupon.get("amount_off") if isinstance(coupon, dict) else 0) or 0
+        coupon = _resolve_coupon(promo)
+        pct = _coupon_percent_off(coupon)
+        amt = float(getattr(coupon, "amount_off", 0) or (coupon.get("amount_off", 0) if isinstance(coupon, dict) else 0) or 0)
         dur = getattr(coupon, "duration", None) or (coupon.get("duration") if isinstance(coupon, dict) else "once")
         return {
             "valid": True,

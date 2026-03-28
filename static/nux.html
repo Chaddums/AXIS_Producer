@@ -670,6 +670,14 @@ async function doSignup() {
 
   if (!email || !password || !name) { errEl.textContent = 'All fields required'; return; }
   if (password.length < 8) { errEl.textContent = 'Password must be 8+ characters'; return; }
+  const hasUpper = /[A-Z]/.test(password);
+  const hasLower = /[a-z]/.test(password);
+  const hasDigit = /[0-9]/.test(password);
+  const hasSpecial = /[^A-Za-z0-9]/.test(password);
+  if ([hasUpper, hasLower, hasDigit, hasSpecial].filter(Boolean).length < 2) {
+    errEl.textContent = 'Password needs at least 2 of: uppercase, lowercase, numbers, symbols';
+    return;
+  }
   if (!attested) { errEl.textContent = 'Self-attestation required'; return; }
 
   const btn = event.target;
@@ -1081,7 +1089,9 @@ async function doBilling() {
 }
 
 // Step 8: Done
-function finish() {
+async function finish() {
+  // Mark setup completion time so dashboard shows clean slate
+  await saveSettings({ setup_completed_at: new Date().toISOString() });
   window.location.href = '/dashboard.html';
 }
 

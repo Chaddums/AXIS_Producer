@@ -304,14 +304,28 @@ def generate_action_sweep(log_path: str,
 
 def copy_to_clipboard(text: str):
     """Copy text to clipboard for easy pasting into Slack/email."""
+    import ctypes
+    CF_UNICODETEXT = 13
+    GMEM_MOVEABLE = 0x0002
+    kernel32 = ctypes.windll.kernel32
+    user32 = ctypes.windll.user32
     try:
-        import tkinter as tk
-        root = tk.Tk()
-        root.withdraw()
-        root.clipboard_clear()
-        root.clipboard_append(text)
-        root.update()
-        root.destroy()
+        if not user32.OpenClipboard(0):
+            return False
+        user32.EmptyClipboard()
+        # Encode as wide string with null terminator
+        encoded = text.encode("utf-16-le") + b"\x00\x00"
+        h = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(encoded))
+        kernel32.GlobalLock.restype = ctypes.c_void_p
+        ptr = kernel32.GlobalLock(h)
+        ctypes.memmove(ptr, encoded, len(encoded))
+        kernel32.GlobalUnlock(h)
+        user32.SetClipboardData(CF_UNICODETEXT, h)
+        user32.CloseClipboard()
         return True
     except Exception:
+        try:
+            user32.CloseClipboard()
+        except Exception:
+            pass
         return False

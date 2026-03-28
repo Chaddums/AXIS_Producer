@@ -4,10 +4,35 @@ Every 2 seconds, reads clipboard text. On change, appends it as a [CHAT]
 entry to the transcript buffer so it gets included in Claude batches.
 """
 
+import ctypes
 import threading
 import time
-import tkinter as tk
 from datetime import datetime
+
+
+def _get_clipboard_text() -> str:
+    """Read clipboard text via Win32 API. Returns empty string on failure."""
+    CF_UNICODETEXT = 13
+    kernel32 = ctypes.windll.kernel32
+    user32 = ctypes.windll.user32
+
+    if not user32.OpenClipboard(0):
+        return ""
+    try:
+        handle = user32.GetClipboardData(CF_UNICODETEXT)
+        if not handle:
+            return ""
+        kernel32.GlobalLock.restype = ctypes.c_wchar_p
+        text = kernel32.GlobalLock(handle)
+        if text:
+            result = str(text)
+            kernel32.GlobalUnlock(handle)
+            return result
+        return ""
+    except Exception:
+        return ""
+    finally:
+        user32.CloseClipboard()
 
 
 class ChatMonitor:
@@ -23,18 +48,6 @@ class ChatMonitor:
         self.verbose = verbose
 
         self._last_text = ""
-        self._tk: tk.Tk | None = None
-
-    def _get_clipboard(self) -> str:
-        """Read clipboard text. Returns empty string on failure."""
-        try:
-            if self._tk is None:
-                self._tk = tk.Tk()
-                self._tk.withdraw()
-            text = self._tk.clipboard_get()
-            return text if isinstance(text, str) else ""
-        except (tk.TclError, Exception):
-            return ""
 
     @staticmethod
     def _is_chat_like(text: str) -> bool:
@@ -51,7 +64,7 @@ class ChatMonitor:
     def run(self):
         """Blocking — runs until stop_event is set."""
         # Initialize with current clipboard to avoid capturing stale text
-        self._last_text = self._get_clipboard()
+        self._last_text = _get_clipboard_text()
         if self.verbose:
             print("  [chat] clipboard monitor started")
 
@@ -60,7 +73,7 @@ class ChatMonitor:
             if self.stop_event.is_set():
                 break
 
-            text = self._get_clipboard()
+            text = _get_clipboard_text()
             if text and text != self._last_text:
                 self._last_text = text
                 if self._is_chat_like(text):
@@ -73,10 +86,3 @@ class ChatMonitor:
                     if self.verbose:
                         preview = clean[:80] + ("..." if len(clean) > 80 else "")
                         print(f"  [chat] captured: {preview}")
-
-        # Cleanup tkinter
-        if self._tk:
-            try:
-                self._tk.destroy()
-            except Exception:
-                pass

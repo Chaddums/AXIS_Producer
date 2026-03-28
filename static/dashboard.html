@@ -450,6 +450,7 @@ let SUPABASE_KEY = '';
 let BACKEND_URL = '';
 let AUTH_TOKEN = '';
 let TEAM_ID = '';
+let SETUP_COMPLETED_AT = '';
 const POLL_MS = 5000;
 const MAX_EVENTS = 500;
 const PRESENCE_MS = 30000;
@@ -462,6 +463,7 @@ async function loadDashboardConfig() {
     BACKEND_URL = cfg.backend_url || '';
     AUTH_TOKEN = cfg.auth_token || '';
     TEAM_ID = cfg.team_id || '';
+    SETUP_COMPLETED_AT = cfg.setup_completed_at || '';
 
     // Solo mode: no cloud sync = personal workspace, hide team panels
     if (!cfg.cloud_sync) {
@@ -628,7 +630,6 @@ async function apiChat(payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
-  if (!resp.ok) throw new Error('Chat failed');
   return resp.json();
 }
 
@@ -914,6 +915,10 @@ function renderFeed(newEvents) {
   document.getElementById('feed-badge').textContent = allEvents.length + ' events';
 
   if (newEvents && newEvents.length > 0) {
+    // Clear empty state placeholder if present
+    const emptyEl = document.getElementById('feed-empty');
+    if (emptyEl) emptyEl.remove();
+
     // Separate critical (pinned) vs others
     const critical = newEvents.filter(e => classifyPriority(e) === 'critical');
     const rest = newEvents.filter(e => classifyPriority(e) !== 'critical');
@@ -968,6 +973,17 @@ function renderFeed(newEvents) {
     }
     html += rest.slice(0, MAX_EVENTS).map(e => renderEventHtml(e, false)).join('');
     panel.innerHTML = html;
+  } else if (panel.children.length === 0 && allEvents.length === 0) {
+    panel.innerHTML = `<div class="empty-state" id="feed-empty" style="text-align:center;padding:40px 20px;">
+      <div style="font-size:18px;color:#4ac0ff;margin-bottom:8px;font-style:normal;">Welcome to AXIS</div>
+      <div style="margin-bottom:12px;">Your event feed is empty. Here's how to get started:</div>
+      <div style="text-align:left;max-width:320px;margin:0 auto;line-height:1.8;">
+        1. Type a message below and hit Send<br>
+        2. Click the mic button to record a voice note<br>
+        3. Right-click the AXIS tray icon to start a session<br>
+      </div>
+      <div style="margin-top:16px;color:#475569;">Events from sessions, messages, and team activity will appear here.</div>
+    </div>`;
   }
 }
 
@@ -1029,21 +1045,14 @@ async function sendThreadReply(parentId) {
   };
 
   try {
-    await apiChat(payload);
-  } catch {
-    try {
-      await sbInsert('events', {
-        who: payload.who,
-        stream: payload.stream,
-        event_type: payload.event_type,
-        summary: text,
-        parent_id: parentId,
-        ts: payload.ts
-      });
-    } catch (err2) {
-      console.error('Thread reply failed:', err2);
+    const result = await apiChat(payload);
+    if (result.error) {
+      console.error('Thread reply error:', result.error);
       return;
     }
+  } catch (err) {
+    console.error('Thread reply failed:', err);
+    return;
   }
 
   // Append reply inline instead of reloading the whole thread
@@ -1082,23 +1091,14 @@ async function sendMessage(text, stream, eventType, parentId, priority) {
   };
 
   try {
-    await apiChat(payload);
-  } catch {
-    // Fallback direct insert
-    try {
-      await sbInsert('events', {
-        who: payload.who,
-        stream: payload.stream,
-        event_type: payload.event_type,
-        summary: text,
-        parent_id: payload.parent_id,
-        raw: payload.raw,
-        ts: payload.ts
-      });
-    } catch (err) {
-      console.error('Send failed:', err);
-      alert('Failed to send message');
+    const result = await apiChat(payload);
+    if (result.error) {
+      console.error('Chat error:', result.error);
+      alert(result.error);
     }
+  } catch (err) {
+    console.error('Send failed:', err);
+    alert('Failed to send message. Check your connection.');
   }
 }
 
@@ -1302,8 +1302,10 @@ async function init() {
   try {
     let history;
     if (BACKEND_URL && AUTH_TOKEN && TEAM_ID) {
-      // Use backend API
-      const r = await fetch(`${BACKEND_URL}/events?team_id=${TEAM_ID}&limit=300`, {
+      // Use backend API — filter to events since setup if first launch
+      let url = `${BACKEND_URL}/events?team_id=${TEAM_ID}&limit=300`;
+      if (SETUP_COMPLETED_AT) url += `&since=${encodeURIComponent(SETUP_COMPLETED_AT)}`;
+      const r = await fetch(url, {
         headers: { 'Authorization': `Bearer ${AUTH_TOKEN}` },
       });
       history = r.ok ? await r.json() : [];

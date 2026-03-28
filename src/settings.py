@@ -76,6 +76,9 @@ class Settings:
     user_id: str = ""                     # backend user UUID
     team_id: str = ""                     # active team UUID
 
+    # Setup tracking
+    setup_completed_at: str = ""          # ISO timestamp when NUX completed
+
     # Workspace type system
     workspace_type: str = "custom"        # dev_team | business_team | healthcare | agency | custom
     workspace_context: str = ""           # free text injected into Claude system prompt

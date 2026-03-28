@@ -4,7 +4,7 @@
 import os
 
 block_cipher = None
-project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+project_dir = os.path.abspath('.')
 src_dir = os.path.join(project_dir, 'src')
 
 # Data files to include
@@ -77,7 +77,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,
+    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
