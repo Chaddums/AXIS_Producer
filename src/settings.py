@@ -142,6 +142,7 @@ class Settings:
     notification_level: str = "info"      # minimum priority to show: ambient, info, warning, critical
     aggressive_alerts: bool = False       # beep on warning, system alert on critical
     dashboard_port: int = 8080            # localhost port for dashboard
+    start_with_windows: bool = False      # auto-launch on Windows startup
     verbose: bool = False
 
     # LLM provider

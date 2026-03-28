@@ -12,3 +12,4 @@ websockets>=12.0          # phone-as-mic WebSocket server (phone_mic_server.py)
 qrcode[pil]>=7.4          # QR code generation for phone pairing
 cryptography>=42.0        # self-signed cert for HTTPS on local network
 httpx>=0.27.0             # backend API client (backend_client.py)
+keyboard>=0.13.5          # global hotkey for recording toggle (tray_app.py)
