@@ -868,9 +868,11 @@ async function loadBriefing() {
       return;
     }
     _briefingData = data;
+    console.log('Briefing data:', data.topics?.length, 'topics', data.needs_action?.length, 'actions');
     renderBriefing(data);
   } catch (err) {
-    panel.innerHTML = `<div class="empty-state">Briefing unavailable: ${escapeHtml(err.message)}</div>`;
+    console.error('Briefing load error:', err);
+    panel.innerHTML = `<div class="empty-state">Briefing error: ${err.message || err}</div>`;
   }
 }
 
