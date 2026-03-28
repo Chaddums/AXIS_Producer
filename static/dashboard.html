@@ -982,34 +982,41 @@ function _showMenu(e, items) {
 function showTopicMenu(e, idx) {
   const topic = _briefingData?.topics?.[idx];
   if (!topic) return;
-  const title = topic.title;
-  const isFollowed = _followedTopics.has(title);
+  const isFollowed = _followedTopics.has(topic.title);
   _showMenu(e, [
     { label: isFollowed ? 'Unfollow this topic' : 'Follow this topic', icon: isFollowed ? '&#9676;' : '&#9673;',
-      action: `toggleFollow('${title.replace(/'/g, "\\'")}')` },
+      action: `toggleFollowByIdx('topic', ${idx})` },
     '---',
     { label: 'Expand details', icon: '&#9660;', action: `toggleTopicDetail(${idx})` },
   ]);
 }
 
 function showActionMenu(e, idx) {
-  const item = _briefingData?.needs_action?.[idx];
-  if (!item) return;
   _showMenu(e, [
     { label: 'Follow this item', icon: '&#9673;',
-      action: `toggleFollow('${(item.what || '').slice(0, 50).replace(/'/g, "\\'")}')` },
+      action: `toggleFollowByIdx('action', ${idx})` },
   ]);
 }
 
 function showEventMenu(e, eventId) {
-  const evt = allEvents.find(ev => ev.id === eventId);
-  if (!evt) return;
-  const summary = (evt.summary || '').slice(0, 50);
   _showMenu(e, [
     { label: 'Follow this thread', icon: '&#9673;',
-      action: `toggleFollow('${summary.replace(/'/g, "\\'")}')` },
+      action: `toggleFollowByIdx('event', ${eventId})` },
     { label: 'Reply', icon: '&#8617;', action: `toggleThread(${eventId})` },
   ]);
+}
+
+function toggleFollowByIdx(type, idx) {
+  closeContextMenu();
+  let label = '';
+  if (type === 'topic') label = _briefingData?.topics?.[idx]?.title || '';
+  else if (type === 'action') label = (_briefingData?.needs_action?.[idx]?.what || '').slice(0, 50);
+  else if (type === 'event') {
+    const evt = allEvents.find(ev => ev.id === idx);
+    label = (evt?.summary || '').slice(0, 50);
+  }
+  if (!label) return;
+  toggleFollow(label);
 }
 
 function toggleFollow(label) {
@@ -1020,8 +1027,24 @@ function toggleFollow(label) {
     _followedTopics.add(label);
   }
   saveFollowed();
-  // Re-render briefing if available
   if (_briefingData) renderBriefing(_briefingData);
+}
+
+function isFollowedEvent(e) {
+  if (!_followedTopics.size) return false;
+  const text = ((e.summary || '') + ' ' + (e.area || '')).toLowerCase();
+  for (const topic of _followedTopics) {
+    // Match if any significant word from the followed topic appears in the event
+    const words = topic.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+    const matches = words.filter(w => text.includes(w));
+    if (matches.length >= 2 || (words.length <= 2 && matches.length >= 1)) return true;
+  }
+  return false;
+}
+
+function toggleActionDetail(idx) {
+  const el = document.getElementById('action-detail-' + idx);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 function renderNeedsAction(data) {
@@ -1037,10 +1060,12 @@ function renderNeedsAction(data) {
 
   panel.innerHTML = items.map((a, i) => `
     <div class="action-item priority-${a.priority || 'warning'}" id="action-${i}"
-      oncontextmenu="showActionMenu(event, ${i})">
-      <div>${escapeHtml(a.what)}</div>
-      <div style="color:#94a3b8;font-size:10px;">${escapeHtml(a.why || '')}</div>
-      ${a.who ? `<div class="action-who">${escapeHtml(a.who.join(', '))}</div>` : ''}
+      style="cursor:pointer" onclick="toggleActionDetail(${i})" oncontextmenu="showActionMenu(event, ${i})">
+      <div style="font-weight:600;">${escapeHtml(a.what)}</div>
+      <div id="action-detail-${i}" style="display:none;margin-top:4px;">
+        <div style="color:#94a3b8;font-size:10px;">Why: ${escapeHtml(a.why || 'No additional context')}</div>
+        ${a.who ? `<div class="action-who">Who: ${escapeHtml(a.who.join(', '))}</div>` : ''}
+      </div>
     </div>
   `).join('');
 }
@@ -1315,12 +1340,13 @@ function renderEventHtml(e, isNew) {
   const status = e.status || 'open';
   const statusClass = status !== 'open' ? ` status-${status}` : '';
   const raw = e.raw || {};
+  const followedClass = isFollowedEvent(e) ? ' followed' : '';
 
   // Session batch: expandable card with nested items
   if (e.event_type === 'session_batch' && raw.items) {
     const itemCount = raw.items.length;
     const detailHtml = renderBatchItems(raw.items);
-    return `<div class="event batch-card ${isNew ? 'new ' : ''}priority-${priority}" data-id="${e.id}"
+    return `<div class="event batch-card ${isNew ? 'new ' : ''}priority-${priority}${followedClass}" data-id="${e.id}"
       onclick="toggleBatchDetail(${e.id})" oncontextmenu="showEventMenu(event, ${e.id})">
       <span class="event-time">${timeStr(e.ts)}</span>
       <span class="event-who ${whoColor(e.who)}">${escapeHtml(e.who)}</span>
@@ -1337,7 +1363,7 @@ function renderEventHtml(e, isNew) {
   }
 
   // Regular event
-  return `<div class="event ${isNew ? 'new ' : ''}priority-${priority}" data-id="${e.id}"
+  return `<div class="event ${isNew ? 'new ' : ''}priority-${priority}${followedClass}" data-id="${e.id}"
     oncontextmenu="showEventMenu(event, ${e.id})">
     <span class="event-time">${timeStr(e.ts)}</span>
     <span class="event-who ${whoColor(e.who)}">${escapeHtml(e.who)}</span>
