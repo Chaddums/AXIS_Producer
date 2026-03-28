@@ -302,7 +302,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 events,
                 provider=settings.llm_provider if settings.llm_api_key else "anthropic",
                 api_key=api_key,
-                model=settings.llm_model,
+                model="claude-haiku-4-5-20251001",  # fast + cheap for synthesis
                 ollama_url=settings.ollama_url,
             )
 

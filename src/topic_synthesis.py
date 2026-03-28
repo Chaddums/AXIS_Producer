@@ -104,12 +104,18 @@ def synthesize_events(events: list[dict], provider: str = "anthropic",
     if not all_items:
         return {"topics": [], "needs_action": [], "conflicts": [], "people": {}}
 
-    # Format for LLM
+    # Format for LLM — cap items per person to stay within token limits
+    MAX_ITEMS_PER_PERSON = 15
     lines = []
     for who, items in person_items.items():
         lines.append(f"\n--- {who} ---")
-        for item in items:
-            lines.append(f"  [{item['category']}] {item['text']}")
+        # Prioritize blockers/actions/decisions over discussion
+        priority_order = {"Blockers": 0, "Action Items": 1, "Decisions Locked": 2,
+                          "Watch List": 3, "Open Questions": 4, "Ideas Generated": 5,
+                          "Key Discussion": 6, "Chat": 7}
+        sorted_items = sorted(items, key=lambda i: priority_order.get(i["category"], 99))
+        for item in sorted_items[:MAX_ITEMS_PER_PERSON]:
+            lines.append(f"  [{item['category']}] {item['text'][:120]}")
 
     input_text = "\n".join(lines)
 
