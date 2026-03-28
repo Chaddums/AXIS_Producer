@@ -125,6 +125,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             else:
                 self._json_response({"paired": False, "streaming": False})
             return
+        elif path == "/api/briefing":
+            self._handle_briefing()
+            return
         # Fall through to static file serving
         super().do_GET()
 
@@ -256,6 +259,64 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 self._json_response({"ok": True})
             else:
                 self._json_response({"error": "Backend rejected the message. Check your connection and auth."}, 502)
+
+        except Exception as e:
+            self._json_response({"error": str(e)}, 500)
+
+    def _handle_briefing(self):
+        """Generate a topic-clustered team briefing from recent events."""
+        try:
+            from settings import Settings
+            settings = Settings.load()
+
+            if not settings.backend_url or not settings.auth_token or not settings.team_id:
+                self._json_response({"error": "Not configured"}, 503)
+                return
+
+            from backend_client import BackendClient
+            client = BackendClient(settings.backend_url, settings.auth_token)
+
+            # Pull recent events (last 4 hours)
+            from datetime import datetime, timedelta, timezone
+            since = (datetime.now(timezone.utc) - timedelta(hours=4)).isoformat()
+            events = client.poll_events(settings.team_id, since=since, limit=500)
+
+            if not events:
+                self._json_response({"topics": [], "needs_action": [], "conflicts": [], "people": {}})
+                return
+
+            from topic_synthesis import synthesize_events, score_relevance
+
+            # Use the user's configured LLM or fall back to env key
+            api_key = settings.llm_api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+            briefing = synthesize_events(
+                events,
+                provider=settings.llm_provider if settings.llm_api_key else "anthropic",
+                api_key=api_key,
+                model=settings.llm_model,
+                ollama_url=settings.ollama_url,
+            )
+
+            # Score relevance to current viewer
+            if settings.user_identity:
+                # Get viewer's recent areas from their own events
+                viewer_events = [e for e in events if e.get("who") == settings.user_identity]
+                viewer_areas = list(set(
+                    item.get("category", "")
+                    for e in viewer_events
+                    for item in e.get("raw", {}).get("items", [])
+                    if item.get("category")
+                ))
+                relevance = score_relevance(
+                    briefing, settings.user_identity, viewer_areas,
+                    provider=settings.llm_provider if settings.llm_api_key else "anthropic",
+                    api_key=api_key,
+                    model=settings.llm_model,
+                    ollama_url=settings.ollama_url,
+                )
+                briefing["relevance"] = relevance
+
+            self._json_response(briefing)
 
         except Exception as e:
             self._json_response({"error": str(e)}, 500)
