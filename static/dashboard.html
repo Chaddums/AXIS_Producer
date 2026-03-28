@@ -529,7 +529,11 @@
   <div class="row-split team-only" style="grid-template-columns: 2fr 1fr;">
     <div class="panel">
       <div class="panel-header">Team Briefing <span id="briefing-badge" class="badge">...</span>
-        <button onclick="loadBriefing()" style="float:right;background:#1e293b;border:1px solid #334155;color:#4ac0ff;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:10px;">Refresh</button>
+        <span style="float:right;display:flex;gap:4px;">
+          <button onclick="showResolved()" style="background:#1e293b;border:1px solid #334155;color:#64748b;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:10px;">Resolved</button>
+          <button onclick="showBacklog()" style="background:#1e293b;border:1px solid #334155;color:#fbbf24;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:10px;">Backlog</button>
+          <button onclick="loadBriefing()" style="background:#1e293b;border:1px solid #334155;color:#4ac0ff;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:10px;">Refresh</button>
+        </span>
       </div>
       <div class="panel-body" id="briefing-panel" style="max-height:400px;overflow-y:auto;">
         <div class="empty-state">Loading briefing...</div>
@@ -967,69 +971,106 @@ function renderBriefing(data) {
 // Context menu + Follow system
 // ============================================================
 let _followedTopics = new Set(JSON.parse(localStorage.getItem('axis_followed') || '[]'));
+let _backlog = JSON.parse(localStorage.getItem('axis_backlog') || '[]');
+let _resolved = JSON.parse(localStorage.getItem('axis_resolved') || '[]');
+let _dismissed = new Set(JSON.parse(localStorage.getItem('axis_dismissed') || '[]'));
 let _activeMenu = null;
 
-function saveFollowed() {
-  localStorage.setItem('axis_followed', JSON.stringify([..._followedTopics]));
-}
+function saveFollowed() { localStorage.setItem('axis_followed', JSON.stringify([..._followedTopics])); }
+function saveBacklog() { localStorage.setItem('axis_backlog', JSON.stringify(_backlog)); }
+function saveResolved() { localStorage.setItem('axis_resolved', JSON.stringify(_resolved)); }
+function saveDismissed() { localStorage.setItem('axis_dismissed', JSON.stringify([..._dismissed])); }
 
 function closeContextMenu() {
   if (_activeMenu) { _activeMenu.remove(); _activeMenu = null; }
 }
 
 document.addEventListener('click', closeContextMenu);
-document.addEventListener('contextmenu', (e) => {
-  // Only prevent default on our cards — let normal right-click work elsewhere
-});
 
 function _showMenu(e, items) {
   e.preventDefault();
+  e.stopPropagation();
   closeContextMenu();
   const menu = document.createElement('div');
   menu.className = 'ctx-menu';
   menu.innerHTML = items.map(item => {
     if (item === '---') return '<div class="ctx-menu-divider"></div>';
-    return `<div class="ctx-menu-item" onclick="${item.action}">${item.icon ? `<span class="ctx-icon">${item.icon}</span>` : ''}${escapeHtml(item.label)}</div>`;
+    return `<div class="ctx-menu-item" onclick="${item.action}; closeContextMenu();">${item.icon ? `<span class="ctx-icon">${item.icon}</span>` : ''}${item.label}</div>`;
   }).join('');
   menu.style.left = e.clientX + 'px';
   menu.style.top = e.clientY + 'px';
   document.body.appendChild(menu);
-  // Keep menu on screen
   const rect = menu.getBoundingClientRect();
   if (rect.right > window.innerWidth) menu.style.left = (window.innerWidth - rect.width - 8) + 'px';
   if (rect.bottom > window.innerHeight) menu.style.top = (window.innerHeight - rect.height - 8) + 'px';
   _activeMenu = menu;
 }
 
+// --- Unified context menus per card type ---
+
 function showTopicMenu(e, idx) {
   const topic = _briefingData?.topics?.[idx];
   if (!topic) return;
   const isFollowed = _followedTopics.has(topic.title);
-  _showMenu(e, [
-    { label: isFollowed ? 'Unfollow this topic' : 'Follow this topic', icon: isFollowed ? '&#9676;' : '&#9673;',
-      action: `toggleFollowByIdx('topic', ${idx})` },
-    '---',
+  const people = topic.people || [];
+  const items = [
     { label: 'Expand details', icon: '&#9660;', action: `toggleTopicDetail(${idx})` },
-  ]);
+    '---',
+    { label: isFollowed ? 'Unfollow' : 'Follow updates', icon: '&#9673;', action: `toggleFollowByIdx('topic', ${idx})` },
+    { label: 'Add to backlog', icon: '&#9776;', action: `addToBacklog('topic', ${idx})` },
+    { label: 'Mark resolved', icon: '&#10003;', action: `markResolved('topic', ${idx})` },
+    { label: 'Dismiss', icon: '&#10005;', action: `dismissItem('topic', ${idx})` },
+  ];
+  if (people.length) {
+    items.push('---');
+    people.forEach(p => {
+      items.push({ label: `Message ${p}`, icon: '&#9993;', action: `messageUser('${p.replace(/'/g, "")}')` });
+    });
+  }
+  _showMenu(e, items);
 }
 
 function showActionMenu(e, idx) {
-  _showMenu(e, [
-    { label: 'Follow this item', icon: '&#9673;',
-      action: `toggleFollowByIdx('action', ${idx})` },
-  ]);
+  const item = _briefingData?.needs_action?.[idx];
+  if (!item) return;
+  const people = item.who || [];
+  const menuItems = [
+    { label: 'Follow updates', icon: '&#9673;', action: `toggleFollowByIdx('action', ${idx})` },
+    { label: 'Add to backlog', icon: '&#9776;', action: `addToBacklog('action', ${idx})` },
+    { label: 'Mark resolved', icon: '&#10003;', action: `markResolved('action', ${idx})` },
+    { label: 'Dismiss', icon: '&#10005;', action: `dismissItem('action', ${idx})` },
+  ];
+  if (people.length) {
+    menuItems.push('---');
+    people.forEach(p => {
+      menuItems.push({ label: `Message ${p}`, icon: '&#9993;', action: `messageUser('${p.replace(/'/g, "")}')` });
+    });
+  }
+  _showMenu(e, menuItems);
 }
 
 function showEventMenu(e, eventId) {
-  _showMenu(e, [
-    { label: 'Follow this thread', icon: '&#9673;',
-      action: `toggleFollowByIdx('event', ${eventId})` },
+  const evt = allEvents.find(ev => ev.id === eventId);
+  const who = evt?.who || '';
+  const items = [
+    { label: 'Expand', icon: '&#9660;', action: `toggleBatchDetail(${eventId})` },
     { label: 'Reply', icon: '&#8617;', action: `toggleThread(${eventId})` },
-  ]);
+    '---',
+    { label: 'Follow thread', icon: '&#9673;', action: `toggleFollowByIdx('event', ${eventId})` },
+    { label: 'Add to backlog', icon: '&#9776;', action: `addToBacklog('event', ${eventId})` },
+    { label: 'Mark resolved', icon: '&#10003;', action: `markResolved('event', ${eventId})` },
+    { label: 'Dismiss', icon: '&#10005;', action: `dismissItem('event', ${eventId})` },
+  ];
+  if (who && who !== getUser()) {
+    items.push('---');
+    items.push({ label: `Message ${who}`, icon: '&#9993;', action: `messageUser('${who.replace(/'/g, "")}')` });
+  }
+  _showMenu(e, items);
 }
 
+// --- Actions ---
+
 function toggleFollowByIdx(type, idx) {
-  closeContextMenu();
   let label = '';
   if (type === 'topic') label = _briefingData?.topics?.[idx]?.title || '';
   else if (type === 'action') label = (_briefingData?.needs_action?.[idx]?.what || '').slice(0, 50);
@@ -1062,6 +1103,114 @@ function isFollowedEvent(e) {
     if (matches.length >= 2 || (words.length <= 2 && matches.length >= 1)) return true;
   }
   return false;
+}
+
+function _getItemLabel(type, idx) {
+  if (type === 'topic') return _briefingData?.topics?.[idx]?.title || `Topic ${idx}`;
+  if (type === 'action') return (_briefingData?.needs_action?.[idx]?.what || '').slice(0, 60);
+  if (type === 'event') {
+    const evt = allEvents.find(ev => ev.id === idx);
+    return (evt?.summary || '').slice(0, 60);
+  }
+  return `Item ${idx}`;
+}
+
+function addToBacklog(type, idx) {
+  const label = _getItemLabel(type, idx);
+  const entry = { type, idx, label, added: new Date().toISOString() };
+  _backlog.push(entry);
+  saveBacklog();
+  const el = document.getElementById(`${type}-${idx}`);
+  if (el) {
+    const badge = document.createElement('span');
+    badge.className = 'source-badge system';
+    badge.textContent = 'BACKLOG';
+    badge.style.marginLeft = '6px';
+    const title = el.querySelector('.topic-title, .event-summary, div:first-child');
+    if (title) title.appendChild(badge);
+  }
+}
+
+function markResolved(type, idx) {
+  const label = _getItemLabel(type, idx);
+  _resolved.push({ type, idx, label, resolved: new Date().toISOString() });
+  saveResolved();
+  const el = document.getElementById(`${type}-${idx}`);
+  if (el) {
+    el.style.opacity = '0.4';
+    el.style.textDecoration = 'line-through';
+  }
+}
+
+function dismissItem(type, idx) {
+  const key = `${type}-${idx}`;
+  _dismissed.add(key);
+  saveDismissed();
+  const el = document.getElementById(key) || document.getElementById(`${type}-${idx}`);
+  if (el) el.style.display = 'none';
+}
+
+function messageUser(who) {
+  // Pre-fill the chat input with @mention
+  const input = document.getElementById('msg-input');
+  if (input) {
+    input.value = `@${who} `;
+    input.focus();
+  }
+}
+
+function showBacklog() {
+  const panel = document.getElementById('briefing-panel');
+  if (!_backlog.length) {
+    panel.innerHTML = '<div class="empty-state">Backlog is empty. Right-click any card and select "Add to backlog".</div>';
+    return;
+  }
+  let html = '<div style="margin-bottom:8px;font-size:11px;color:#64748b;cursor:pointer" onclick="if(_briefingData)renderBriefing(_briefingData)">&#8592; Back to briefing</div>';
+  _backlog.forEach((item, i) => {
+    html += `<div class="topic-card priority-info" style="display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <div class="topic-title">${escapeHtml(item.label)}</div>
+        <div style="font-size:9px;color:#64748b;">${item.type} &bull; added ${timeStr(item.added)}</div>
+      </div>
+      <div style="flex-shrink:0;">
+        <span style="cursor:pointer;color:#34d399;font-size:14px;" onclick="resolveBacklogItem(${i})" title="Resolve">&#10003;</span>
+        <span style="cursor:pointer;color:#f87171;font-size:14px;margin-left:8px;" onclick="removeBacklogItem(${i})" title="Remove">&#10005;</span>
+      </div>
+    </div>`;
+  });
+  panel.innerHTML = html;
+}
+
+function resolveBacklogItem(i) {
+  const item = _backlog.splice(i, 1)[0];
+  if (item) {
+    _resolved.push({ ...item, resolved: new Date().toISOString() });
+    saveResolved();
+  }
+  saveBacklog();
+  showBacklog();
+}
+
+function removeBacklogItem(i) {
+  _backlog.splice(i, 1);
+  saveBacklog();
+  showBacklog();
+}
+
+function showResolved() {
+  const panel = document.getElementById('briefing-panel');
+  if (!_resolved.length) {
+    panel.innerHTML = '<div class="empty-state">No resolved items yet.</div>';
+    return;
+  }
+  let html = '<div style="margin-bottom:8px;font-size:11px;color:#64748b;cursor:pointer" onclick="if(_briefingData)renderBriefing(_briefingData)">&#8592; Back to briefing</div>';
+  _resolved.slice().reverse().forEach(item => {
+    html += `<div class="topic-card priority-ambient" style="opacity:0.6;">
+      <div class="topic-title" style="text-decoration:line-through;">${escapeHtml(item.label)}</div>
+      <div style="font-size:9px;color:#64748b;">resolved ${timeStr(item.resolved)}</div>
+    </div>`;
+  });
+  panel.innerHTML = html;
 }
 
 function toggleActionDetail(idx) {
