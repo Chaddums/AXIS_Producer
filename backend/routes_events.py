@@ -23,6 +23,11 @@ class EventIn(BaseModel):
     parent_id: int | None = None
 
 
+class EventStatusUpdate(BaseModel):
+    status: str  # 'resolved' or 'dismissed'
+    who: str
+
+
 class SynthesisIn(BaseModel):
     team_id: str
     content: str
@@ -53,6 +58,26 @@ async def push_event(event: EventIn, user: dict = Depends(auth.get_current_user)
     res = db.client().table("events").insert(row).execute()
 
     return {"ok": True, "id": res.data[0]["id"] if res.data else None}
+
+
+@router.patch("/{event_id}")
+async def update_event_status(
+    event_id: int,
+    body: EventStatusUpdate,
+    user: dict = Depends(auth.get_current_user),
+):
+    if body.status not in ("resolved", "dismissed"):
+        raise HTTPException(status_code=400, detail="Status must be 'resolved' or 'dismissed'")
+
+    event = db.get_event_by_id(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    if event["team_id"] not in user.get("teams", []):
+        raise HTTPException(status_code=403, detail="Not a member of this team")
+
+    result = db.update_event_status(event_id, body.status, body.who)
+    return {"ok": True, "event": result}
 
 
 @router.post("/batch")

@@ -261,6 +261,22 @@ def update_team_config(team_id: str, **kwargs) -> dict | None:
     return res.data[0] if res.data else None
 
 
+# --- Event status ---
+
+def get_event_by_id(event_id: int) -> dict | None:
+    res = client().table("events").select("*").eq("id", event_id).execute()
+    return res.data[0] if res.data else None
+
+
+def update_event_status(event_id: int, status: str, who: str) -> dict | None:
+    from datetime import datetime, timezone
+    updates = {"status": status, "resolved_by": who}
+    if status in ("resolved", "dismissed"):
+        updates["resolved_at"] = datetime.now(timezone.utc).isoformat()
+    res = client().table("events").update(updates).eq("id", event_id).execute()
+    return res.data[0] if res.data else None
+
+
 # --- Syntheses ---
 
 def insert_synthesis(team_id: str, content: str,

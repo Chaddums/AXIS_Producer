@@ -224,6 +224,40 @@
   }
   .event-reply-btn:hover { color: #4ac0ff; }
 
+  /* Event action buttons (resolve/dismiss) */
+  .event-actions { display: flex; gap: 4px; flex-shrink: 0; margin-top: 1px; }
+  .event-action-btn {
+    background: none;
+    border: 1px solid #334155;
+    color: #64748b;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    line-height: 1.4;
+  }
+  .event-action-btn:hover { border-color: #4ac0ff; color: #4ac0ff; }
+  .event-action-btn.resolve:hover { border-color: #34d399; color: #34d399; }
+  .event-action-btn.dismiss:hover { border-color: #f87171; color: #f87171; }
+
+  /* Event status styles */
+  .event.status-resolved {
+    border-left-color: #34d399 !important;
+    opacity: 0.5;
+  }
+  .event.status-resolved .event-summary { text-decoration: line-through; color: #64748b; }
+  .event.status-dismissed { opacity: 0.35; }
+  .event-status-label {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .event-status-label.resolved { background: #064e3b; color: #34d399; }
+  .event-status-label.dismissed { background: #1e293b; color: #64748b; }
+
   /* Thread panel */
   .thread-panel {
     margin-left: 50px;
@@ -419,10 +453,16 @@
     </div>
   </div>
 
-  <!-- Live Feed -->
-  <div class="panel" style="flex:1; min-height:200px;">
-    <div class="panel-header">Live Event Feed <span id="feed-badge" class="badge">0</span></div>
-    <div class="panel-body feed-body" id="feed-panel"></div>
+  <!-- Split Feed: Actionable + Activity -->
+  <div class="row-split" style="flex:1; min-height:200px;">
+    <div class="panel">
+      <div class="panel-header">Actionable <span id="actionable-badge" class="badge">0</span></div>
+      <div class="panel-body feed-body" id="actionable-panel"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">Activity <span id="activity-badge" class="badge">0</span></div>
+      <div class="panel-body feed-body" id="activity-panel"></div>
+    </div>
   </div>
 
 </div>
@@ -717,6 +757,13 @@ function isOnline(who) {
   return (Date.now() - new Date(last).getTime()) < 60000;
 }
 
+function isActionable(e) {
+  const p = classifyPriority(e);
+  if (p === 'critical' || p === 'warning') return true;
+  const et = (e.event_type || '').toLowerCase();
+  return ['blocker', 'blockers', 'action_item', 'decision', 'question', 'watch'].includes(et);
+}
+
 // ============================================================
 // Rendering: Team Activity
 // ============================================================
@@ -922,93 +969,144 @@ function renderEventHtml(e, isNew) {
   const priority = classifyPriority(e);
   const files = (e.files || []).map(shortFile);
   const area = e.area ? remapLabel(e.area) : '';
+  const status = e.status || 'open';
+  const statusClass = status !== 'open' ? ` status-${status}` : '';
 
-  return `<div class="event ${isNew ? 'new ' : ''}priority-${priority}" data-id="${e.id}">
+  // Status label for resolved/dismissed
+  let statusLabel = '';
+  if (status === 'resolved') statusLabel = ' <span class="event-status-label resolved">RESOLVED</span>';
+  else if (status === 'dismissed') statusLabel = ' <span class="event-status-label dismissed">DISMISSED</span>';
+
+  // Action buttons for actionable events that are still open
+  let actionBtns = '';
+  if (status === 'open' && isActionable(e)) {
+    actionBtns = `<div class="event-actions">
+      <button class="event-action-btn resolve" onclick="resolveEvent(${e.id})" title="Resolve">&#10003;</button>
+      <button class="event-action-btn dismiss" onclick="dismissEvent(${e.id})" title="Dismiss">&#10005;</button>
+    </div>`;
+  }
+
+  return `<div class="event ${isNew ? 'new ' : ''}priority-${priority}${statusClass}" data-id="${e.id}" data-status="${status}">
     <span class="event-time">${timeStr(e.ts)}</span>
     <span class="event-who ${whoColor(e.who)}">${escapeHtml(e.who)}</span>
     <div class="event-body">
-      <div class="event-summary">${escapeHtml(e.summary || '')}</div>
+      <div class="event-summary">${escapeHtml(e.summary || '')}${statusLabel}</div>
       ${files.length ? `<div class="event-files">${files.join(', ')}</div>` : ''}
       <div class="event-meta">${escapeHtml(e.stream || '')}${area ? ' / ' + escapeHtml(area) : ''}</div>
     </div>
     <span class="event-type">${escapeHtml(e.event_type || '?')}</span>
+    ${actionBtns}
     <button class="event-reply-btn" onclick="toggleThread(${e.id})" title="Reply">&#8617;</button>
   </div><div id="thread-${e.id}"></div>`;
 }
 
 function renderFeed(newEvents) {
-  const panel = document.getElementById('feed-panel');
-  document.getElementById('feed-badge').textContent = allEvents.length + ' events';
+  const actionPanel = document.getElementById('actionable-panel');
+  const activityPanel = document.getElementById('activity-panel');
+
+  // Count for badges
+  const topOnly = allEvents.filter(e => !e.parent_id);
+  const actionCount = topOnly.filter(e => isActionable(e)).length;
+  const activityCount = topOnly.length - actionCount;
+  document.getElementById('actionable-badge').textContent = actionCount;
+  document.getElementById('activity-badge').textContent = activityCount;
 
   if (newEvents && newEvents.length > 0) {
-    // Clear empty state placeholder if present
-    const emptyEl = document.getElementById('feed-empty');
-    if (emptyEl) emptyEl.remove();
+    // Remove empty state placeholders
+    for (const el of document.querySelectorAll('.feed-empty')) el.remove();
 
-    // Separate critical (pinned) vs others
-    const critical = newEvents.filter(e => classifyPriority(e) === 'critical');
-    const rest = newEvents.filter(e => classifyPriority(e) !== 'critical');
+    const actionNew = newEvents.filter(e => isActionable(e));
+    const activityNew = newEvents.filter(e => !isActionable(e));
 
-    // Insert critical at very top (pinned section)
-    if (critical.length) {
-      let pinned = document.getElementById('pinned-section');
-      if (!pinned) {
-        panel.insertAdjacentHTML('afterbegin',
-          '<div id="pinned-section" class="pinned-section"><div class="pinned-label">PINNED CRITICAL</div></div>');
-        pinned = document.getElementById('pinned-section');
-      }
-      const pinnedLabel = pinned.querySelector('.pinned-label');
-      for (const e of critical) {
-        pinnedLabel.insertAdjacentHTML('afterend', renderEventHtml(e, true));
-      }
-      playBeep();
-    }
+    // Actionable column: pinned criticals at top, then rest
+    if (actionNew.length) {
+      const openCriticals = actionNew.filter(e =>
+        classifyPriority(e) === 'critical' && (e.status || 'open') === 'open');
+      const rest = actionNew.filter(e =>
+        !(classifyPriority(e) === 'critical' && (e.status || 'open') === 'open'));
 
-    // Insert rest after pinned section
-    const insertPoint = document.getElementById('pinned-section');
-    const html = rest.map(e => renderEventHtml(e, true)).join('');
-    if (insertPoint) {
-      insertPoint.insertAdjacentHTML('afterend', html);
-    } else {
-      panel.insertAdjacentHTML('afterbegin', html);
-    }
-
-    // Trim
-    const allEventDivs = panel.querySelectorAll('.event');
-    if (allEventDivs.length > MAX_EVENTS) {
-      for (let i = MAX_EVENTS; i < allEventDivs.length; i++) {
-        const el = allEventDivs[i];
-        // Also remove thread container following it
-        if (el.nextElementSibling && el.nextElementSibling.id && el.nextElementSibling.id.startsWith('thread-')) {
-          el.nextElementSibling.remove();
+      if (openCriticals.length) {
+        let pinned = document.getElementById('pinned-section');
+        if (!pinned) {
+          actionPanel.insertAdjacentHTML('afterbegin',
+            '<div id="pinned-section" class="pinned-section"><div class="pinned-label">PINNED CRITICAL</div></div>');
+          pinned = document.getElementById('pinned-section');
         }
-        el.remove();
+        const pinnedLabel = pinned.querySelector('.pinned-label');
+        for (const e of openCriticals) {
+          pinnedLabel.insertAdjacentHTML('afterend', renderEventHtml(e, true));
+        }
+        playBeep();
+      }
+
+      if (rest.length) {
+        const insertPoint = document.getElementById('pinned-section');
+        const html = rest.map(e => renderEventHtml(e, true)).join('');
+        if (insertPoint) {
+          insertPoint.insertAdjacentHTML('afterend', html);
+        } else {
+          actionPanel.insertAdjacentHTML('afterbegin', html);
+        }
       }
     }
-  } else if (panel.children.length === 0 && allEvents.length > 0) {
-    // Initial full render — only top-level events (no thread replies)
-    const topOnly = allEvents.filter(e => !e.parent_id);
-    const critical = topOnly.filter(e => classifyPriority(e) === 'critical');
-    const rest = topOnly.filter(e => classifyPriority(e) !== 'critical');
 
-    let html = '';
-    if (critical.length) {
-      html += '<div id="pinned-section" class="pinned-section"><div class="pinned-label">PINNED CRITICAL</div>';
-      html += critical.map(e => renderEventHtml(e, false)).join('');
-      html += '</div>';
+    // Activity column: chronological
+    if (activityNew.length) {
+      const html = activityNew.map(e => renderEventHtml(e, true)).join('');
+      activityPanel.insertAdjacentHTML('afterbegin', html);
     }
-    html += rest.slice(0, MAX_EVENTS).map(e => renderEventHtml(e, false)).join('');
-    panel.innerHTML = html;
-  } else if (panel.children.length === 0 && allEvents.length === 0) {
-    panel.innerHTML = `<div class="empty-state" id="feed-empty" style="text-align:center;padding:40px 20px;">
-      <div style="font-size:18px;color:#4ac0ff;margin-bottom:8px;font-style:normal;">Welcome to AXIS</div>
-      <div style="margin-bottom:12px;">Your event feed is empty. Here's how to get started:</div>
-      <div style="text-align:left;max-width:320px;margin:0 auto;line-height:1.8;">
+
+    // Trim both panels
+    for (const p of [actionPanel, activityPanel]) {
+      const divs = p.querySelectorAll('.event');
+      if (divs.length > MAX_EVENTS) {
+        for (let i = MAX_EVENTS; i < divs.length; i++) {
+          const el = divs[i];
+          if (el.nextElementSibling && el.nextElementSibling.id && el.nextElementSibling.id.startsWith('thread-')) {
+            el.nextElementSibling.remove();
+          }
+          el.remove();
+        }
+      }
+    }
+  } else if (actionPanel.children.length === 0 && activityPanel.children.length === 0 && allEvents.length > 0) {
+    // Initial full render
+    const topEvts = topOnly;
+    const actionEvts = topEvts.filter(e => isActionable(e));
+    const activityEvts = topEvts.filter(e => !isActionable(e));
+
+    // Actionable panel
+    const openCriticals = actionEvts.filter(e =>
+      classifyPriority(e) === 'critical' && (e.status || 'open') === 'open');
+    const actionRest = actionEvts.filter(e =>
+      !(classifyPriority(e) === 'critical' && (e.status || 'open') === 'open'));
+
+    let actionHtml = '';
+    if (openCriticals.length) {
+      actionHtml += '<div id="pinned-section" class="pinned-section"><div class="pinned-label">PINNED CRITICAL</div>';
+      actionHtml += openCriticals.map(e => renderEventHtml(e, false)).join('');
+      actionHtml += '</div>';
+    }
+    actionHtml += actionRest.slice(0, MAX_EVENTS).map(e => renderEventHtml(e, false)).join('');
+    actionPanel.innerHTML = actionHtml || '<div class="empty-state feed-empty">No actionable items</div>';
+
+    // Activity panel
+    const activityHtml = activityEvts.slice(0, MAX_EVENTS).map(e => renderEventHtml(e, false)).join('');
+    activityPanel.innerHTML = activityHtml || '<div class="empty-state feed-empty">No activity yet</div>';
+
+  } else if (actionPanel.children.length === 0 && activityPanel.children.length === 0 && allEvents.length === 0) {
+    actionPanel.innerHTML = `<div class="empty-state feed-empty" style="text-align:center;padding:40px 20px;">
+      <div style="font-size:16px;color:#4ac0ff;margin-bottom:8px;font-style:normal;">No actionable items</div>
+      <div style="color:#475569;">Criticals, blockers, and decisions will appear here.</div>
+    </div>`;
+    activityPanel.innerHTML = `<div class="empty-state feed-empty" style="text-align:center;padding:40px 20px;">
+      <div style="font-size:16px;color:#4ac0ff;margin-bottom:8px;font-style:normal;">Welcome to AXIS</div>
+      <div style="margin-bottom:12px;">Your event feed is empty.</div>
+      <div style="text-align:left;max-width:280px;margin:0 auto;line-height:1.8;">
         1. Type a message below and hit Send<br>
         2. Click the mic button to record a voice note<br>
         3. Right-click the AXIS tray icon to start a session<br>
       </div>
-      <div style="margin-top:16px;color:#475569;">Events from sessions, messages, and team activity will appear here.</div>
     </div>`;
   }
 }
@@ -1099,6 +1197,75 @@ async function sendThreadReply(parentId) {
     }
   }
   inp.focus();
+}
+
+// ============================================================
+// Event status (resolve / dismiss)
+// ============================================================
+async function updateEventStatus(eventId, status) {
+  const who = getUser();
+  if (BACKEND_URL && AUTH_TOKEN) {
+    const r = await fetch(`${BACKEND_URL}/events/${eventId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${AUTH_TOKEN}` },
+      body: JSON.stringify({ status, who }),
+    });
+    if (!r.ok) throw new Error(`Status update failed: ${r.status}`);
+    return r.json();
+  }
+  throw new Error('No backend configured for status updates');
+}
+
+function resolveEvent(eventId) {
+  updateEventStatus(eventId, 'resolved').then(() => {
+    applyEventStatus(eventId, 'resolved');
+    // Update local state
+    const evt = allEvents.find(e => e.id === eventId);
+    if (evt) evt.status = 'resolved';
+  }).catch(err => console.error('Resolve failed:', err));
+}
+
+function dismissEvent(eventId) {
+  updateEventStatus(eventId, 'dismissed').then(() => {
+    applyEventStatus(eventId, 'dismissed');
+    const evt = allEvents.find(e => e.id === eventId);
+    if (evt) evt.status = 'dismissed';
+  }).catch(err => console.error('Dismiss failed:', err));
+}
+
+function applyEventStatus(eventId, status) {
+  const el = document.querySelector(`.event[data-id="${eventId}"]`);
+  if (!el) return;
+
+  el.classList.add(`status-${status}`);
+  el.setAttribute('data-status', status);
+
+  // Remove action buttons
+  const actions = el.querySelector('.event-actions');
+  if (actions) actions.remove();
+
+  // Add status label
+  const summary = el.querySelector('.event-summary');
+  if (summary) {
+    const label = status === 'resolved'
+      ? ' <span class="event-status-label resolved">RESOLVED</span>'
+      : ' <span class="event-status-label dismissed">DISMISSED</span>';
+    summary.insertAdjacentHTML('beforeend', label);
+  }
+
+  // Un-pin resolved/dismissed criticals from pinned section
+  const pinned = document.getElementById('pinned-section');
+  if (pinned && pinned.contains(el)) {
+    // Move to after pinned section in actionable panel
+    const threadEl = document.getElementById(`thread-${eventId}`);
+    if (pinned.nextSibling) {
+      pinned.parentNode.insertBefore(el, pinned.nextSibling);
+      if (threadEl) pinned.parentNode.insertBefore(threadEl, el.nextSibling);
+    }
+    // Remove pinned section if empty (only label left)
+    const remaining = pinned.querySelectorAll('.event');
+    if (remaining.length === 0) pinned.remove();
+  }
 }
 
 // ============================================================
