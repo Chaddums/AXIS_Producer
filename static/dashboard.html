@@ -224,39 +224,40 @@
   }
   .event-reply-btn:hover { color: #4ac0ff; }
 
-  /* Event action buttons (resolve/dismiss) */
-  .event-actions { display: flex; gap: 4px; flex-shrink: 0; margin-top: 1px; }
-  .event-action-btn {
-    background: none;
+  /* Context menu */
+  .ctx-menu {
+    position: fixed;
+    background: #1e293b;
     border: 1px solid #334155;
-    color: #64748b;
+    border-radius: 6px;
+    padding: 4px 0;
+    z-index: 9999;
+    min-width: 180px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }
+  .ctx-menu-item {
+    padding: 6px 14px;
+    font-size: 12px;
+    color: #c8d0e0;
     cursor: pointer;
-    font-size: 11px;
-    padding: 1px 6px;
-    border-radius: 3px;
-    line-height: 1.4;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
-  .event-action-btn:hover { border-color: #4ac0ff; color: #4ac0ff; }
-  .event-action-btn.resolve:hover { border-color: #34d399; color: #34d399; }
-  .event-action-btn.dismiss:hover { border-color: #f87171; color: #f87171; }
+  .ctx-menu-item:hover { background: #334155; }
+  .ctx-menu-item .ctx-icon { color: #4ac0ff; width: 14px; text-align: center; }
+  .ctx-menu-divider { border-top: 1px solid #334155; margin: 4px 0; }
 
-  /* Event status styles */
-  .event.status-resolved {
-    border-left-color: #34d399 !important;
-    opacity: 0.5;
-  }
-  .event.status-resolved .event-summary { text-decoration: line-through; color: #64748b; }
-  .event.status-dismissed { opacity: 0.35; }
-  .event-status-label {
+  /* Followed items */
+  .followed { border-left: 3px solid #4ac0ff !important; }
+  .follow-badge {
     font-size: 9px;
+    color: #4ac0ff;
+    background: #1e293b;
     padding: 1px 5px;
     border-radius: 3px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    margin-left: 6px;
   }
-  .event-status-label.resolved { background: #064e3b; color: #34d399; }
-  .event-status-label.dismissed { background: #1e293b; color: #64748b; }
 
   /* Briefing cards */
   .topic-card {
@@ -921,14 +922,10 @@ function renderBriefing(data) {
       detailHtml += '</div>';
     }
 
-    html += `<div class="topic-card priority-${t.priority || 'info'}" id="topic-${idx}" onclick="toggleTopicDetail(${idx})">
-      <div style="display:flex;justify-content:space-between;align-items:start;">
-        <div class="topic-title">${escapeHtml(t.title)}</div>
-        <div style="flex-shrink:0;margin-left:8px;" onclick="event.stopPropagation()">
-          <button class="event-action-btn resolve" onclick="dismissTopic(${idx})" title="Acknowledge">&#10003;</button>
-          <button class="event-action-btn dismiss" onclick="dismissTopic(${idx})" title="Dismiss">&#10005;</button>
-        </div>
-      </div>
+    const isFollowed = _followedTopics.has(t.title);
+    html += `<div class="topic-card priority-${t.priority || 'info'}${isFollowed ? ' followed' : ''}" id="topic-${idx}"
+      onclick="toggleTopicDetail(${idx})" oncontextmenu="showTopicMenu(event, ${idx})">
+      <div class="topic-title">${escapeHtml(t.title)}${isFollowed ? '<span class="follow-badge">FOLLOWING</span>' : ''}</div>
       <div class="topic-summary">${escapeHtml(t.summary || '')}</div>
       <div class="topic-people">${escapeHtml(people)}</div>
       <div class="topic-detail" id="topic-detail-${idx}">
@@ -944,21 +941,87 @@ function renderBriefing(data) {
   renderBriefingConflicts(data);
 }
 
-function dismissTopic(idx) {
-  const el = document.getElementById('topic-' + idx);
-  if (el) {
-    el.style.opacity = '0.3';
-    el.style.pointerEvents = 'none';
-    el.querySelector('.topic-title').style.textDecoration = 'line-through';
-  }
+// ============================================================
+// Context menu + Follow system
+// ============================================================
+let _followedTopics = new Set(JSON.parse(localStorage.getItem('axis_followed') || '[]'));
+let _activeMenu = null;
+
+function saveFollowed() {
+  localStorage.setItem('axis_followed', JSON.stringify([..._followedTopics]));
 }
 
-function dismissAction(idx) {
-  const el = document.getElementById('action-' + idx);
-  if (el) {
-    el.style.opacity = '0.3';
-    el.style.pointerEvents = 'none';
+function closeContextMenu() {
+  if (_activeMenu) { _activeMenu.remove(); _activeMenu = null; }
+}
+
+document.addEventListener('click', closeContextMenu);
+document.addEventListener('contextmenu', (e) => {
+  // Only prevent default on our cards — let normal right-click work elsewhere
+});
+
+function _showMenu(e, items) {
+  e.preventDefault();
+  closeContextMenu();
+  const menu = document.createElement('div');
+  menu.className = 'ctx-menu';
+  menu.innerHTML = items.map(item => {
+    if (item === '---') return '<div class="ctx-menu-divider"></div>';
+    return `<div class="ctx-menu-item" onclick="${item.action}">${item.icon ? `<span class="ctx-icon">${item.icon}</span>` : ''}${escapeHtml(item.label)}</div>`;
+  }).join('');
+  menu.style.left = e.clientX + 'px';
+  menu.style.top = e.clientY + 'px';
+  document.body.appendChild(menu);
+  // Keep menu on screen
+  const rect = menu.getBoundingClientRect();
+  if (rect.right > window.innerWidth) menu.style.left = (window.innerWidth - rect.width - 8) + 'px';
+  if (rect.bottom > window.innerHeight) menu.style.top = (window.innerHeight - rect.height - 8) + 'px';
+  _activeMenu = menu;
+}
+
+function showTopicMenu(e, idx) {
+  const topic = _briefingData?.topics?.[idx];
+  if (!topic) return;
+  const title = topic.title;
+  const isFollowed = _followedTopics.has(title);
+  _showMenu(e, [
+    { label: isFollowed ? 'Unfollow this topic' : 'Follow this topic', icon: isFollowed ? '&#9676;' : '&#9673;',
+      action: `toggleFollow('${title.replace(/'/g, "\\'")}')` },
+    '---',
+    { label: 'Expand details', icon: '&#9660;', action: `toggleTopicDetail(${idx})` },
+  ]);
+}
+
+function showActionMenu(e, idx) {
+  const item = _briefingData?.needs_action?.[idx];
+  if (!item) return;
+  _showMenu(e, [
+    { label: 'Follow this item', icon: '&#9673;',
+      action: `toggleFollow('${(item.what || '').slice(0, 50).replace(/'/g, "\\'")}')` },
+  ]);
+}
+
+function showEventMenu(e, eventId) {
+  const evt = allEvents.find(ev => ev.id === eventId);
+  if (!evt) return;
+  const summary = (evt.summary || '').slice(0, 50);
+  _showMenu(e, [
+    { label: 'Follow this thread', icon: '&#9673;',
+      action: `toggleFollow('${summary.replace(/'/g, "\\'")}')` },
+    { label: 'Reply', icon: '&#8617;', action: `toggleThread(${eventId})` },
+  ]);
+}
+
+function toggleFollow(label) {
+  closeContextMenu();
+  if (_followedTopics.has(label)) {
+    _followedTopics.delete(label);
+  } else {
+    _followedTopics.add(label);
   }
+  saveFollowed();
+  // Re-render briefing if available
+  if (_briefingData) renderBriefing(_briefingData);
 }
 
 function renderNeedsAction(data) {
@@ -973,14 +1036,9 @@ function renderNeedsAction(data) {
   }
 
   panel.innerHTML = items.map((a, i) => `
-    <div class="action-item priority-${a.priority || 'warning'}" id="action-${i}">
-      <div style="display:flex;justify-content:space-between;align-items:start;">
-        <div>${escapeHtml(a.what)}</div>
-        <div style="flex-shrink:0;margin-left:8px;">
-          <button class="event-action-btn resolve" onclick="dismissAction(${i})" title="Resolve">&#10003;</button>
-          <button class="event-action-btn dismiss" onclick="dismissAction(${i})" title="Dismiss">&#10005;</button>
-        </div>
-      </div>
+    <div class="action-item priority-${a.priority || 'warning'}" id="action-${i}"
+      oncontextmenu="showActionMenu(event, ${i})">
+      <div>${escapeHtml(a.what)}</div>
       <div style="color:#94a3b8;font-size:10px;">${escapeHtml(a.why || '')}</div>
       ${a.who ? `<div class="action-who">${escapeHtml(a.who.join(', '))}</div>` : ''}
     </div>
@@ -1258,51 +1316,37 @@ function renderEventHtml(e, isNew) {
   const statusClass = status !== 'open' ? ` status-${status}` : '';
   const raw = e.raw || {};
 
-  // Status label for resolved/dismissed
-  let statusLabel = '';
-  if (status === 'resolved') statusLabel = ' <span class="event-status-label resolved">RESOLVED</span>';
-  else if (status === 'dismissed') statusLabel = ' <span class="event-status-label dismissed">DISMISSED</span>';
-
-  // Action buttons for actionable events that are still open
-  let actionBtns = '';
-  if (status === 'open' && isActionable(e)) {
-    actionBtns = `<div class="event-actions">
-      <button class="event-action-btn resolve" onclick="resolveEvent(${e.id})" title="Resolve">&#10003;</button>
-      <button class="event-action-btn dismiss" onclick="dismissEvent(${e.id})" title="Dismiss">&#10005;</button>
-    </div>`;
-  }
-
   // Session batch: expandable card with nested items
   if (e.event_type === 'session_batch' && raw.items) {
     const itemCount = raw.items.length;
     const detailHtml = renderBatchItems(raw.items);
-    return `<div class="event batch-card ${isNew ? 'new ' : ''}priority-${priority}${statusClass}" data-id="${e.id}" data-status="${status}" onclick="toggleBatchDetail(${e.id})">
+    return `<div class="event batch-card ${isNew ? 'new ' : ''}priority-${priority}" data-id="${e.id}"
+      onclick="toggleBatchDetail(${e.id})" oncontextmenu="showEventMenu(event, ${e.id})">
       <span class="event-time">${timeStr(e.ts)}</span>
       <span class="event-who ${whoColor(e.who)}">${escapeHtml(e.who)}</span>
       <div class="event-body">
-        <div class="event-summary">${escapeHtml(e.summary || '')}${statusLabel}</div>
+        <div class="event-summary">${escapeHtml(e.summary || '')}</div>
         <div class="event-meta">session batch &bull; ${itemCount} items &bull; click to expand</div>
         <div id="batch-detail-${e.id}" class="batch-detail" style="display:none" onclick="event.stopPropagation()">
           ${detailHtml}
         </div>
       </div>
       <span class="event-type">batch</span>
-      ${actionBtns}
       <button class="event-reply-btn" onclick="event.stopPropagation();toggleThread(${e.id})" title="Reply">&#8617;</button>
     </div><div id="thread-${e.id}"></div>`;
   }
 
   // Regular event
-  return `<div class="event ${isNew ? 'new ' : ''}priority-${priority}${statusClass}" data-id="${e.id}" data-status="${status}">
+  return `<div class="event ${isNew ? 'new ' : ''}priority-${priority}" data-id="${e.id}"
+    oncontextmenu="showEventMenu(event, ${e.id})">
     <span class="event-time">${timeStr(e.ts)}</span>
     <span class="event-who ${whoColor(e.who)}">${escapeHtml(e.who)}</span>
     <div class="event-body">
-      <div class="event-summary">${escapeHtml(e.summary || '')}${statusLabel}</div>
+      <div class="event-summary">${escapeHtml(e.summary || '')}</div>
       ${files.length ? `<div class="event-files">${files.join(', ')}</div>` : ''}
       <div class="event-meta">${escapeHtml(e.stream || '')}${area ? ' / ' + escapeHtml(area) : ''}</div>
     </div>
     <span class="event-type">${escapeHtml(e.event_type || '?')}</span>
-    ${actionBtns}
     <button class="event-reply-btn" onclick="toggleThread(${e.id})" title="Reply">&#8617;</button>
   </div><div id="thread-${e.id}"></div>`;
 }
