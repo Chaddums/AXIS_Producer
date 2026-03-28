@@ -162,10 +162,15 @@ class CloudSync:
         """Push one summary event per batch with items nested inside."""
         if not items:
             return
-        from collections import Counter
-        cat_counts = Counter(cat for cat, _ in items)
-        summary_parts = [f"{count} {cat.lower()}" for cat, count in cat_counts.most_common()]
-        summary_line = ", ".join(summary_parts)
+        # Summary: most actionable items as the headline, not category counts
+        priority_order = ["Blockers", "Action Items", "Decisions Locked", "Watch List",
+                          "Open Questions", "Ideas Generated", "Key Discussion"]
+        headline_items = []
+        for cat in priority_order:
+            for c, text in items:
+                if c == cat and len(headline_items) < 3:
+                    headline_items.append(text)
+        summary_line = " | ".join(headline_items) if headline_items else items[0][1]
 
         CATEGORY_PRIORITY = {
             "Blockers": "critical", "Action Items": "warning",

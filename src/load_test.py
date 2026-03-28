@@ -234,13 +234,15 @@ def push_batch_event(items: list[tuple[str, str]], notes: str, who: str,
     if not items:
         return 0
 
-    # Build summary line: "3 decisions, 2 blockers, 1 action item"
-    from collections import Counter
-    cat_counts = Counter(cat for cat, _ in items)
-    summary_parts = []
-    for cat, count in cat_counts.most_common():
-        summary_parts.append(f"{count} {cat.lower()}")
-    summary_line = ", ".join(summary_parts)
+    # Build summary: pull the most actionable items as the headline
+    priority_order = ["Blockers", "Action Items", "Decisions Locked", "Watch List",
+                      "Open Questions", "Ideas Generated", "Key Discussion"]
+    headline_items = []
+    for cat in priority_order:
+        for c, text in items:
+            if c == cat and len(headline_items) < 3:
+                headline_items.append(text)
+    summary_line = " | ".join(headline_items) if headline_items else items[0][1]
 
     # Determine highest priority from items
     CATEGORY_PRIORITY = {
