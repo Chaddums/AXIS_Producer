@@ -4,7 +4,7 @@
 Sits in the Windows notification area. Auto-detects voice conversation,
 offers to start recording. Captures mic + system audio + clipboard chat.
 
-Hotkey: Win+Shift+R to toggle recording.
+Hotkey: Ctrl+Shift+F9 to toggle recording.
 Edge indicator: thin red bar at top of screen when recording.
 Auto-stop: 2 minutes of silence or end-of-day.
 
@@ -35,7 +35,7 @@ from notifications import (
 )
 
 
-HOTKEY = "win+shift+r"
+HOTKEY = "ctrl+shift+f9"
 SILENCE_TIMEOUT = 120  # seconds of silence before auto-stop
 END_OF_DAY_CHECK_INTERVAL = 300  # check every 5 minutes
 
@@ -98,13 +98,13 @@ class TrayApp:
     def _build_menu(self) -> pystray.Menu:
         return pystray.Menu(
             pystray.MenuItem(
-                "Start Session  (Win+Shift+R)",
+                "Start Session  (Ctrl+Shift+F9)",
                 self._on_start_session,
                 visible=lambda item: self.controller.state in (
                     State.IDLE, State.DETECTING),
             ),
             pystray.MenuItem(
-                "Stop Session  (Win+Shift+R)",
+                "Stop Session  (Ctrl+Shift+F9)",
                 self._on_stop_session,
                 visible=lambda item: self.controller.state == State.RECORDING,
             ),
@@ -189,7 +189,7 @@ class TrayApp:
     # ----- Hotkey -----
 
     def _on_hotkey(self):
-        """Win+Shift+R — toggle recording on/off."""
+        """Ctrl+Shift+F9 — toggle recording on/off."""
         state = self.controller.state
         if state == State.RECORDING:
             self._notify("AXIS", "Stopping session...")
@@ -379,7 +379,7 @@ class TrayApp:
             self._icon.update_menu()
         self._notify(
             "AXIS Producer",
-            "Conversation detected. Press Win+Shift+R or right-click tray to record."
+            "Conversation detected. Press Ctrl+Shift+F9 or right-click tray to record."
         )
         self._prompt_timer = threading.Timer(15.0, self._expire_prompt)
         self._prompt_timer.daemon = True
@@ -502,7 +502,7 @@ class TrayApp:
         self._start_eod_checker()
 
         print("AXIS Producer tray app started")
-        print("  Win+Shift+R to start/stop recording")
+        print("  Ctrl+Shift+F9 to start/stop recording")
         print("  Right-click tray icon for options")
 
         # Run pystray on main thread (Win32 message pump)
