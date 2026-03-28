@@ -275,33 +275,20 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             from backend_client import BackendClient
             client = BackendClient(settings.backend_url, settings.auth_token)
 
-            # Pull recent events — get newest first, filter to batch events
+            # Pull recent batch events directly using event_type filter
             import httpx
-            # First get the max ID so we can query backwards
             resp = httpx.get(
                 f"{settings.backend_url}/events",
-                params={"team_id": settings.team_id, "limit": "1"},
+                params={
+                    "team_id": settings.team_id,
+                    "event_type": "session_batch,chat,voice_chat,insight",
+                    "order": "desc",
+                    "limit": "200",
+                },
                 headers={"Authorization": f"Bearer {settings.auth_token}"},
                 timeout=30.0,
             )
-            peek = resp.json() if resp.status_code == 200 else []
-            if not peek:
-                self._json_response({"topics": [], "needs_action": [], "conflicts": [], "people": {}})
-                return
-
-            # Query a wide range of recent events
-            max_id = max(e.get("id", 0) for e in peek)
-            start_id = max(0, max_id - 2000)
-            resp2 = httpx.get(
-                f"{settings.backend_url}/events",
-                params={"team_id": settings.team_id, "since_id": str(start_id), "limit": "500"},
-                headers={"Authorization": f"Bearer {settings.auth_token}"},
-                timeout=30.0,
-            )
-            all_events = resp2.json() if resp2.status_code == 200 else []
-            # Filter to meaningful events only
-            events = [e for e in all_events
-                      if e.get("event_type") in ("session_batch", "chat", "voice_chat", "insight")]
+            events = resp.json() if resp.status_code == 200 else []
 
             if not events:
                 self._json_response({"topics": [], "needs_action": [], "conflicts": [], "people": {}})

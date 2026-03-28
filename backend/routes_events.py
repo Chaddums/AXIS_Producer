@@ -123,6 +123,8 @@ async def pull_events(
     since: str = Query(None, description="ISO timestamp, return events after this"),
     since_id: str = Query(None, description="Return events with id > this value"),
     limit: int = Query(100, le=500),
+    order: str = Query("asc", description="Sort order: asc or desc"),
+    event_type: str = Query(None, description="Filter by event_type (comma-separated)"),
     user: dict = Depends(auth.get_current_user),
 ):
     if team_id not in user.get("teams", []):
@@ -133,7 +135,10 @@ async def pull_events(
         q = q.gt("id", since_id)
     elif since:
         q = q.gt("ts", since)
-    q = q.order("ts", desc=False).limit(limit)
+    if event_type:
+        types = [t.strip() for t in event_type.split(",")]
+        q = q.in_("event_type", types)
+    q = q.order("id", desc=(order == "desc")).limit(limit)
 
     res = q.execute()
     return res.data or []
