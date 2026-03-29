@@ -60,12 +60,17 @@ def get_team(team_id: str) -> dict | None:
 
 
 def add_team_member(team_id: str, user_id: str, role: str = "member") -> dict | None:
-    res = client().table("team_members").insert({
-        "team_id": team_id,
-        "user_id": user_id,
-        "role": role,
-    }).execute()
-    return res.data[0] if res.data else None
+    try:
+        res = client().table("team_members").insert({
+            "team_id": team_id,
+            "user_id": user_id,
+            "role": role,
+        }).execute()
+        return res.data[0] if res.data else None
+    except Exception as e:
+        if "duplicate" in str(e).lower() or "unique" in str(e).lower() or "23505" in str(e):
+            return {"team_id": team_id, "user_id": user_id, "role": role, "already_member": True}
+        raise
 
 
 def get_team_members(team_id: str) -> list[dict]:

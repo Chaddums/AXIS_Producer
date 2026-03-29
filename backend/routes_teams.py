@@ -110,30 +110,38 @@ async def join_team(req: JoinRequest, user: dict = Depends(auth.get_current_user
     if not invite:
         raise HTTPException(status_code=404, detail="Invalid or expired invite code")
 
-    db.add_team_member(invite["team_id"], user["sub"], role="member")
-    db.mark_invite_used(invite["id"], user["sub"])
+    try:
+        db.add_team_member(invite["team_id"], user["sub"], role="member")
+        db.mark_invite_used(invite["id"], user["sub"])
 
-    team = db.get_team(invite["team_id"])
+        team = db.get_team(invite["team_id"])
 
-    # Join event
-    db_user = db.get_user_by_id(user["sub"])
-    who = db_user["name"] if db_user else "Someone"
-    from datetime import datetime, timezone
-    db.client().table("events").insert({
-        "team_id": invite["team_id"],
-        "session_id": "",
-        "stream": "system",
-        "event_type": "member_joined",
-        "who": who,
-        "area": None,
-        "files": [],
-        "summary": f"{who} joined the workspace",
-        "raw": {},
-        "project": None,
-        "ts": datetime.now(timezone.utc).isoformat(),
-    }).execute()
+        # Join event
+        db_user = db.get_user_by_id(user["sub"])
+        who = db_user["name"] if db_user else "Someone"
+        from datetime import datetime, timezone
+        try:
+            db.client().table("events").insert({
+                "team_id": invite["team_id"],
+                "session_id": "",
+                "stream": "system",
+                "event_type": "member_joined",
+                "who": who,
+                "area": None,
+                "files": [],
+                "summary": f"{who} joined the workspace",
+                "raw": {},
+                "project": None,
+                "ts": datetime.now(timezone.utc).isoformat(),
+            }).execute()
+        except Exception:
+            pass  # non-fatal — join still succeeded
 
-    return {"team_id": invite["team_id"], "team_name": team["name"] if team else ""}
+        return {"team_id": invite["team_id"], "team_name": team["name"] if team else ""}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Join failed: {e}")
 
 
 @router.get("/{team_id}/members")

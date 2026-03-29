@@ -2262,14 +2262,29 @@ function closePhoneQR() {
       <div style="font-size:12px;color:#64748b;margin-bottom:4px">Usage this month</div>
       <div id="acct-usage" style="font-size:14px;margin-bottom:16px">—</div>
 
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="close-btn" onclick="openBillingPortal()">Manage Billing</button>
         <button class="close-btn" onclick="inviteFromAccount()">Invite Members</button>
+        <button class="close-btn" onclick="showJoinTeam()">Join a Team</button>
       </div>
 
       <div id="acct-invite" style="display:none;margin-top:12px">
         <div style="font-family:monospace;font-size:16px;color:#4ac0ff;background:#0a0f1a;padding:8px;border-radius:4px;text-align:center;cursor:pointer;user-select:all" id="acct-invite-code"></div>
         <div style="font-size:11px;color:#64748b;text-align:center;margin-top:4px">Click to copy</div>
+      </div>
+
+      <div id="acct-join" style="display:none;margin-top:12px">
+        <div style="font-size:12px;color:#64748b;margin-bottom:4px">Invite code</div>
+        <input id="join-code-input" type="text" placeholder="Paste invite code"
+          style="width:100%;padding:8px;background:#0a0f1a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:14px;font-family:monospace;box-sizing:border-box"
+          spellcheck="false"
+          onkeydown="if(event.key==='Enter')doJoinTeam()">
+        <div id="join-error" style="color:#f87171;font-size:12px;margin-top:4px"></div>
+        <div id="join-success" style="color:#4ade80;font-size:12px;margin-top:4px;display:none"></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="close-btn" onclick="doJoinTeam()" style="background:#2563eb;border-color:#2563eb;color:#fff">Join</button>
+          <button class="close-btn" onclick="hideJoinTeam()">Cancel</button>
+        </div>
       </div>
     </div>
 
@@ -2339,6 +2354,49 @@ async function openBillingPortal() {
     const data = await r.json();
     if (data.portal_url) window.open(data.portal_url, '_blank');
   } catch(e) {}
+}
+
+function showJoinTeam() {
+  document.getElementById('acct-invite').style.display = 'none';
+  document.getElementById('acct-join').style.display = 'block';
+  document.getElementById('join-code-input').value = '';
+  document.getElementById('join-error').textContent = '';
+  document.getElementById('join-success').style.display = 'none';
+  document.getElementById('join-code-input').focus();
+}
+
+function hideJoinTeam() {
+  document.getElementById('acct-join').style.display = 'none';
+}
+
+async function doJoinTeam() {
+  const code = document.getElementById('join-code-input').value.trim();
+  const errEl = document.getElementById('join-error');
+  const successEl = document.getElementById('join-success');
+  errEl.textContent = '';
+  successEl.style.display = 'none';
+
+  if (!code) { errEl.textContent = 'Enter an invite code'; return; }
+
+  try {
+    const r = await fetch('/api/join-team', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      errEl.textContent = data.error || 'Failed to join team';
+      return;
+    }
+    successEl.textContent = 'Joined team successfully';
+    successEl.style.display = 'block';
+    document.getElementById('join-code-input').value = '';
+    // Refresh account info after short delay
+    setTimeout(() => { hideJoinTeam(); showAccountPanel(); }, 1500);
+  } catch(e) {
+    errEl.textContent = 'Connection error';
+  }
 }
 
 async function inviteFromAccount() {

@@ -151,6 +151,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_terms_post()
         elif path == "/api/terms/import":
             self._handle_terms_import()
+        elif path == "/api/join-team":
+            self._handle_join_team()
         else:
             self.send_error(404, "Not Found")
 
@@ -455,6 +457,44 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             count = db.import_terms(terms_list)
             db.close()
             self._json_response({"ok": True, "count": count})
+        except Exception as e:
+            self._json_response({"error": str(e)}, 500)
+
+    def _handle_join_team(self):
+        """Join a team using an invite code."""
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(content_length))
+            code = body.get("code", "").strip()
+
+            if not code:
+                self._json_response({"error": "Invite code required"}, 400)
+                return
+
+            from settings import Settings
+            s = Settings.load()
+            if not s.backend_url or not s.auth_token:
+                self._json_response({"error": "Not logged in. Run setup first."}, 401)
+                return
+
+            from backend_client import BackendClient
+            client = BackendClient(s.backend_url, s.auth_token)
+            result = client.join_team(code)
+
+            if result and result.get("team_id"):
+                s.team_id = result["team_id"]
+                s.save()
+                self._json_response({"ok": True, "team_id": result["team_id"], "team_name": result.get("team_name", "")})
+            elif result and result.get("_error"):
+                raw = result.get("_detail", "")
+                try:
+                    detail = json.loads(raw).get("detail", raw)
+                except Exception:
+                    detail = raw
+                self._json_response({"error": detail or "Invalid or expired invite code"}, 400)
+            else:
+                self._json_response({"error": "Failed to join team — no response from backend"}, 502)
+
         except Exception as e:
             self._json_response({"error": str(e)}, 500)
 
