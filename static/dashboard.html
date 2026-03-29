@@ -869,9 +869,7 @@ function isOnline(who) {
 
 function isActionable(e) {
   const p = classifyPriority(e);
-  if (p === 'critical' || p === 'warning') return true;
-  const et = (e.event_type || '').toLowerCase();
-  return ['blocker', 'blockers', 'action_item', 'decision', 'question', 'watch'].includes(et);
+  return p === 'critical' || p === 'warning';
 }
 
 // ============================================================
@@ -1165,8 +1163,11 @@ function markResolved(type, idx) {
   _sendFeedback('resolve', label, type, '');
   const el = _findCard(type, idx);
   if (el) {
-    el.style.opacity = '0.35';
-    el.classList.add('resolved-card');
+    const threadEl = el.nextElementSibling;
+    if (threadEl && threadEl.id && threadEl.id.startsWith('thread-')) threadEl.remove();
+    el.remove();
+    const pinned = document.getElementById('pinned-section');
+    if (pinned && pinned.querySelectorAll('.event').length === 0) pinned.remove();
   }
 }
 
@@ -1176,7 +1177,13 @@ function dismissItem(type, idx) {
   saveDismissed();
   _sendFeedback('dismiss', label, type, '');
   const el = _findCard(type, idx);
-  if (el) el.style.display = 'none';
+  if (el) {
+    const threadEl = el.nextElementSibling;
+    if (threadEl && threadEl.id && threadEl.id.startsWith('thread-')) threadEl.remove();
+    el.remove();
+    const pinned = document.getElementById('pinned-section');
+    if (pinned && pinned.querySelectorAll('.event').length === 0) pinned.remove();
+  }
 }
 
 function messageUser(who) {
