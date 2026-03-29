@@ -103,12 +103,20 @@ async def delete_events_bulk(
     if not source:
         raise HTTPException(status_code=400, detail="source filter required for bulk delete")
 
-    sources = [s.strip() for s in source.split(",")]
+    sources = set(s.strip() for s in source.split(","))
     total = 0
-    for src in sources:
-        res = db.client().table("events").delete().eq("team_id", team_id).eq(
-            "raw->>source", src).execute()
-        total += len(res.data) if res.data else 0
+    # Paginate: fetch events, filter by source in Python, delete by ID
+    while True:
+        fetch = db.client().table("events").select("id,raw").eq(
+            "team_id", team_id).limit(500).execute()
+        ids = [e["id"] for e in (fetch.data or [])
+               if (e.get("raw") or {}).get("source", "") in sources]
+        if not ids:
+            break
+        for i in range(0, len(ids), 50):
+            batch = ids[i:i + 50]
+            db.client().table("events").delete().in_("id", batch).execute()
+            total += len(batch)
     return {"ok": True, "deleted": total}
 
 
