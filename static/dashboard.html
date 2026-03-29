@@ -1114,6 +1114,7 @@ function isFollowedEvent(e) {
 function _getItemLabel(type, idx) {
   if (type === 'topic') return _briefingData?.topics?.[idx]?.title || `Topic ${idx}`;
   if (type === 'action') return (_briefingData?.needs_action?.[idx]?.what || '').slice(0, 60);
+  if (type === 'conflict') return (_briefingData?.conflicts?.[idx]?.description || '').slice(0, 60);
   if (type === 'event') {
     const evt = allEvents.find(ev => ev.id === idx);
     return (evt?.summary || '').slice(0, 60);
@@ -1128,11 +1129,14 @@ function _findCard(type, idx) {
 }
 
 function _sendFeedback(action, text, tag, theme) {
-  fetch('/api/feedback', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ action, text, tag: tag || '', theme: theme || '' }),
-  }).catch(() => {});
+  try {
+    fetch('/api/feedback', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ action, text, tag: tag || '', theme: theme || '' }),
+    }).then(r => { if (!r.ok && r.status !== 404) console.warn('Feedback:', r.status); })
+      .catch(() => {});
+  } catch {}
 }
 
 function addToBacklog(type, idx) {
@@ -1238,6 +1242,30 @@ function showResolved() {
   panel.innerHTML = html;
 }
 
+function toggleConflictDetail(idx) {
+  const el = document.getElementById('conflict-detail-' + idx);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function showConflictMenu(e, idx) {
+  const conflict = _briefingData?.conflicts?.[idx];
+  if (!conflict) return;
+  const people = conflict.between || [];
+  const items = [
+    { label: 'Expand details', icon: '&#9660;', action: `toggleConflictDetail(${idx})` },
+    { label: 'Follow', icon: '&#9673;', action: `toggleFollowByIdx('conflict', ${idx})` },
+    { label: 'Add to backlog', icon: '&#9776;', action: `addToBacklog('conflict', ${idx})` },
+    { label: 'Dismiss', icon: '&#10005;', action: `dismissItem('conflict', ${idx})` },
+  ];
+  if (people.length) {
+    items.push('---');
+    people.forEach(p => {
+      items.push({ label: `Message ${p}`, icon: '&#9993;', action: `messageUser('${p.replace(/'/g, "")}')` });
+    });
+  }
+  _showMenu(e, items);
+}
+
 function toggleActionDetail(idx) {
   const el = document.getElementById('action-detail-' + idx);
   if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
@@ -1302,10 +1330,14 @@ function renderBriefingConflicts(data) {
   if (section) section.style.display = 'block';
   badge.textContent = conflicts.length;
 
-  panel.innerHTML = conflicts.map(c => `
-    <div class="conflict-item">
-      <div>${escapeHtml(c.description)}</div>
-      <div style="color:#ff8800;font-size:10px;">Between: ${escapeHtml((c.between || []).join(', '))}</div>
+  panel.innerHTML = conflicts.map((c, i) => `
+    <div class="conflict-item" id="conflict-${i}" style="cursor:pointer"
+      onclick="toggleConflictDetail(${i})" oncontextmenu="showConflictMenu(event, ${i})">
+      <div style="font-weight:600;">${escapeHtml(c.description)}</div>
+      <div id="conflict-detail-${i}" style="display:none;margin-top:4px;">
+        <div style="color:#ff8800;font-size:10px;">Between: ${escapeHtml((c.between || []).join(', '))}</div>
+        <div style="color:#94a3b8;font-size:10px;">Priority: ${escapeHtml(c.priority || 'warning')}</div>
+      </div>
     </div>
   `).join('');
 }
