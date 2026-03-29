@@ -12,27 +12,15 @@ from datetime import datetime
 
 def _get_clipboard_text() -> str:
     """Read clipboard text via Win32 API. Returns empty string on failure."""
-    CF_UNICODETEXT = 13
-    kernel32 = ctypes.windll.kernel32
-    user32 = ctypes.windll.user32
-
-    if not user32.OpenClipboard(0):
-        return ""
     try:
-        handle = user32.GetClipboardData(CF_UNICODETEXT)
-        if not handle:
-            return ""
-        kernel32.GlobalLock.restype = ctypes.c_wchar_p
-        text = kernel32.GlobalLock(handle)
-        if text:
-            result = str(text)
-            kernel32.GlobalUnlock(handle)
-            return result
-        return ""
+        import subprocess
+        result = subprocess.run(
+            ["powershell", "-Command", "Get-Clipboard"],
+            capture_output=True, text=True, timeout=3,
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
     except Exception:
         return ""
-    finally:
-        user32.CloseClipboard()
 
 
 class ChatMonitor:

@@ -288,5 +288,8 @@ class PhoneMicServer:
 
     def stop(self):
         self.stop_event.set()
-        if self._loop:
-            self._loop.call_soon_threadsafe(self._loop.stop)
+        if self._loop and self._loop.is_running():
+            try:
+                self._loop.call_soon_threadsafe(self._loop.stop)
+            except RuntimeError:
+                pass
