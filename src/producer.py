@@ -70,7 +70,8 @@ class BatchProducer:
                  llm_provider: str = "ollama",
                  llm_api_key: str = "",
                  llm_model: str = "",
-                 ollama_url: str = "http://localhost:11434"):
+                 ollama_url: str = "http://localhost:11434",
+                 intelligence_pipeline=None):
         self.stop_event = stop_event
         self.buffer_lock = buffer_lock
         self.transcript_buffer = transcript_buffer
@@ -85,6 +86,7 @@ class BatchProducer:
         self._llm_api_key = llm_api_key
         self._llm_model = llm_model
         self._ollama_url = ollama_url
+        self._pipeline = intelligence_pipeline
 
         # Build system prompt with optional workspace context
         self._system_prompt = SYSTEM_PROMPT
@@ -173,8 +175,15 @@ class BatchProducer:
         if self.verbose:
             print(f"  [producer] batch {self._batch_count} -- {word_count} words -> LLM")
 
+        # Add context hint from intelligence pipeline (tells LLM what's already captured)
+        llm_input = transcript
+        if self._pipeline:
+            context_hint = self._pipeline.build_context_hint()
+            if context_hint:
+                llm_input = transcript + context_hint
+
         try:
-            notes = self._call_llm(transcript)
+            notes = self._call_llm(llm_input)
         except Exception as e:
             print(f"  [producer] LLM error: {e}")
             with self.buffer_lock:
@@ -186,10 +195,22 @@ class BatchProducer:
         if self.verbose:
             print(f"  [producer] batch {self._batch_count} logged")
 
-        # Extract items and fire callback for notifications + cloud sync
+        # Extract items, run through intelligence pipeline, fire callback
         if self.on_items_logged:
             items = self._extract_items(notes)
-            if items:
+            if items and self._pipeline:
+                # Filter through intelligence pipeline (dedup, triage, theme)
+                enriched = self._pipeline.filter_items(items)
+                # Convert back to (category, text) tuples for the callback
+                filtered_items = [(i["category"], i["text"]) for i in enriched]
+                if filtered_items:
+                    try:
+                        self.on_items_logged(filtered_items, notes)
+                    except Exception as e:
+                        if self.verbose:
+                            print(f"  [producer] callback error: {e}")
+            elif items:
+                # No pipeline, pass through directly
                 try:
                     self.on_items_logged(items, notes)
                 except Exception as e:

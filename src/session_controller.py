@@ -421,6 +421,14 @@ class SessionController:
         self.batch_count = 0
         self.item_count = 0
 
+        # Intelligence pipeline — local pre/post-LLM filtering
+        try:
+            from intelligence import IntelligencePipeline
+            self._intelligence = IntelligencePipeline(verbose=self.settings.verbose)
+        except Exception as e:
+            print(f"  [controller] intelligence pipeline init failed: {e}")
+            self._intelligence = None
+
         # Shared state
         self._stop_event = threading.Event()
         chunk_queue = queue.Queue()
@@ -470,6 +478,7 @@ class SessionController:
             llm_api_key=self.settings.llm_api_key,
             llm_model=self.settings.llm_model,
             ollama_url=self.settings.ollama_url,
+            intelligence_pipeline=self._intelligence,
         )
 
         # Phone mic (WebSocket, shares chunk_queue with local mic)
@@ -617,12 +626,25 @@ class SessionController:
             self.batch_count = self._producer._batch_count
             self._producer = None
 
+        # Index session items via intelligence pipeline
+        if hasattr(self, '_intelligence') and self._intelligence:
+            try:
+                self._intelligence.index_session()
+                duration = int((datetime.now() - self._recording_start).total_seconds() / 60)
+                self._intelligence.save_session_summary(duration_minutes=duration)
+                if self.settings.verbose:
+                    stats = self._intelligence.consolidate_session()["stats"]
+                    print(f"  [controller] session indexed: {stats['total']} items, "
+                          f"grades={stats['by_grade']}")
+            except Exception as e:
+                print(f"  [controller] intelligence indexing failed: {e}")
+
         # Run digest post-processor
         log_path = os.path.join(os.path.abspath(self.settings.log_dir),
                                 "session_log.md")
         self._run_digest(log_path)
 
-        # Run deep session synthesis (the money feature)
+        # Run deep session synthesis with intelligence context
         self._run_session_synthesis(log_path)
 
         # Resume detecting
@@ -667,10 +689,16 @@ class SessionController:
                 "duration": f"{self.batch_count * self.settings.batch_interval // 60} min (approx)",
             }
 
+            # Get pre-filtered context from intelligence pipeline
+            intelligence_context = ""
+            if hasattr(self, '_intelligence') and self._intelligence:
+                intelligence_context = self._intelligence.format_context_for_synthesis()
+
             api_key = self.settings.llm_api_key or os.environ.get("ANTHROPIC_API_KEY", "")
             report = generate_session_report(
                 transcript,
                 session_metadata=metadata,
+                intelligence_context=intelligence_context,
                 provider=self.settings.llm_provider if self.settings.llm_api_key else "anthropic",
                 api_key=api_key,
                 model=self.settings.llm_model,

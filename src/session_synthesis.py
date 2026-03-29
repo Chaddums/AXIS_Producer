@@ -108,6 +108,7 @@ Be specific, reference what was actually said. No fluff.
 
 
 def generate_session_report(transcript: str, session_metadata: dict = None,
+                            intelligence_context: str = "",
                             provider: str = "anthropic", api_key: str = "",
                             model: str = "", ollama_url: str = "http://localhost:11434",
                             max_tokens: int = 4096) -> str:
@@ -157,6 +158,10 @@ def generate_session_report(transcript: str, session_metadata: dict = None,
     if context_lines:
         user_message = "\n".join(context_lines) + "\n\n---\n\n" + transcript
 
+    # Prepend intelligence pipeline context (pre-analyzed items, themes, scores)
+    if intelligence_context:
+        user_message = intelligence_context + "\n\n---\n\nFULL TRANSCRIPT:\n\n" + user_message
+
     # Truncate if too long (keep first and last portions for context)
     words = user_message.split()
     MAX_WORDS = 15000  # ~20k tokens, leaves room for response
@@ -189,6 +194,9 @@ def generate_session_report(transcript: str, session_metadata: dict = None,
     footer = "\n\n---\n\n> *AI-generated analysis. Not a verbatim transcript. " \
              "Verify important points independently.*\n"
 
+    # Prepend local intelligence summary if available
+    if intelligence_context:
+        return header + intelligence_context + "\n\n---\n\n" + report + footer
     return header + report + footer
 
 

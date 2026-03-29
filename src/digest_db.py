@@ -64,12 +64,40 @@ class DigestDB:
                 VALUES (new.id, new.tag, new.theme, new.text);
             END;
         """)
-        # Add triage columns to existing DBs (idempotent)
+        # Add columns to existing DBs (idempotent)
+        for col, typedef in [
+            ("triage_score", "INTEGER NOT NULL DEFAULT 0"),
+            ("triage_grade", "TEXT NOT NULL DEFAULT ''"),
+            ("content_hash", "TEXT NOT NULL DEFAULT ''"),
+            ("term_vector", "TEXT NOT NULL DEFAULT '[]'"),
+            ("session_id", "TEXT NOT NULL DEFAULT ''"),
+        ]:
+            try:
+                conn.execute(f"SELECT {col} FROM items LIMIT 1")
+            except sqlite3.OperationalError:
+                conn.execute(f"ALTER TABLE items ADD COLUMN {col} {typedef}")
+
+        # Session summaries table for trend tracking
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS session_summaries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_date TEXT NOT NULL,
+                duration_minutes INTEGER DEFAULT 0,
+                total_items INTEGER DEFAULT 0,
+                items_by_grade TEXT DEFAULT '{}',
+                items_by_theme TEXT DEFAULT '{}',
+                top_items TEXT DEFAULT '[]',
+                llm_tokens_used INTEGER DEFAULT 0,
+                report_path TEXT DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+
+        # Index on content_hash for fast exact dedup
         try:
-            conn.execute("SELECT triage_score FROM items LIMIT 1")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_items_hash ON items(content_hash)")
         except sqlite3.OperationalError:
-            conn.execute("ALTER TABLE items ADD COLUMN triage_score INTEGER NOT NULL DEFAULT 0")
-            conn.execute("ALTER TABLE items ADD COLUMN triage_grade TEXT NOT NULL DEFAULT ''")
+            pass
         conn.commit()
 
     def insert_item(self, session_date: str, batch_time: str,
@@ -185,6 +213,48 @@ class DigestDB:
             "sessions": [r["session_date"] for r in sessions],
             "avg_triage_score": round(avg_score, 1) if avg_score else 0,
         }
+
+    def find_by_hash(self, h: str) -> dict | None:
+        """Find an item by content hash (exact dedup)."""
+        conn = self._connect()
+        row = conn.execute(
+            "SELECT * FROM items WHERE content_hash = ? LIMIT 1", (h,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def get_items_since(self, date: str, limit: int = 200) -> list[dict]:
+        """Get items since a date for trend comparisons."""
+        conn = self._connect()
+        rows = conn.execute(
+            "SELECT session_date, batch_time, tag, theme, text, triage_score, triage_grade "
+            "FROM items WHERE session_date >= ? ORDER BY id DESC LIMIT ?",
+            (date, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def insert_session_summary(self, session_date: str, duration_minutes: int = 0,
+                               total_items: int = 0, items_by_grade: str = "{}",
+                               items_by_theme: str = "{}", top_items: str = "[]",
+                               llm_tokens_used: int = 0, report_path: str = ""):
+        """Record a session summary for trend tracking."""
+        conn = self._connect()
+        conn.execute(
+            "INSERT INTO session_summaries "
+            "(session_date, duration_minutes, total_items, items_by_grade, "
+            " items_by_theme, top_items, llm_tokens_used, report_path) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (session_date, duration_minutes, total_items, items_by_grade,
+             items_by_theme, top_items, llm_tokens_used, report_path),
+        )
+        conn.commit()
+
+    def get_session_summaries(self, limit: int = 20) -> list[dict]:
+        """Get recent session summaries for trend analysis."""
+        conn = self._connect()
+        rows = conn.execute(
+            "SELECT * FROM session_summaries ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     def close(self):
         if self._conn:
