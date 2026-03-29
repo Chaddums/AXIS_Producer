@@ -1111,13 +1111,33 @@ function isFollowedEvent(e) {
 
 function _getItemLabel(type, idx) {
   if (type === 'topic') return _briefingData?.topics?.[idx]?.title || `Topic ${idx}`;
-  if (type === 'action') return (_briefingData?.needs_action?.[idx]?.what || '').slice(0, 60);
-  if (type === 'conflict') return (_briefingData?.conflicts?.[idx]?.description || '').slice(0, 60);
+  if (type === 'action') return _briefingData?.needs_action?.[idx]?.what || '';
+  if (type === 'conflict') return _briefingData?.conflicts?.[idx]?.description || '';
   if (type === 'event') {
     const evt = allEvents.find(ev => ev.id === idx);
-    return (evt?.summary || '').slice(0, 60);
+    return evt?.summary || '';
   }
   return `Item ${idx}`;
+}
+
+function _getItemDetail(type, idx) {
+  if (type === 'action') {
+    const a = _briefingData?.needs_action?.[idx];
+    return a ? { why: a.why || '', who: a.who || '' } : {};
+  }
+  if (type === 'conflict') {
+    const c = _briefingData?.conflicts?.[idx];
+    return c ? { between: (c.between || []).join(' vs '), resolution: c.suggested_resolution || '' } : {};
+  }
+  if (type === 'topic') {
+    const t = _briefingData?.topics?.[idx];
+    return t ? { summary: t.summary || '', people: (t.people || []).join(', ') } : {};
+  }
+  if (type === 'event') {
+    const evt = allEvents.find(ev => ev.id === idx);
+    return evt ? { who: evt.who || '', stream: evt.stream || '' } : {};
+  }
+  return {};
 }
 
 function _findCard(type, idx) {
@@ -1139,7 +1159,8 @@ function _sendFeedback(action, text, tag, theme) {
 
 function addToBacklog(type, idx) {
   const label = _getItemLabel(type, idx);
-  _backlog.push({ type, idx, label, added: new Date().toISOString() });
+  const detail = _getItemDetail(type, idx);
+  _backlog.push({ type, idx, label, detail, added: new Date().toISOString() });
   saveBacklog();
   _sendFeedback('backlog', label, type, '');
   const el = _findCard(type, idx);
@@ -1211,12 +1232,22 @@ function showBacklog() {
   }
   let html = '<div style="margin-bottom:8px;font-size:11px;color:#64748b;cursor:pointer" onclick="if(_briefingData)renderBriefing(_briefingData)">&#8592; Back to briefing</div>';
   _backlog.forEach((item, i) => {
-    html += `<div class="topic-card priority-info" style="display:flex;justify-content:space-between;align-items:center;">
-      <div>
+    const d = item.detail || {};
+    let detailHtml = '';
+    if (d.why) detailHtml += `<div style="font-size:11px;color:#94a3b8;margin-top:4px;">Why: ${escapeHtml(d.why)}</div>`;
+    if (d.who) detailHtml += `<div style="font-size:10px;color:#4ac0ff;margin-top:2px;">${escapeHtml(d.who)}</div>`;
+    if (d.between) detailHtml += `<div style="font-size:11px;color:#94a3b8;margin-top:4px;">${escapeHtml(d.between)}</div>`;
+    if (d.resolution) detailHtml += `<div style="font-size:11px;color:#94a3b8;margin-top:2px;">Suggested: ${escapeHtml(d.resolution)}</div>`;
+    if (d.summary) detailHtml += `<div style="font-size:11px;color:#94a3b8;margin-top:4px;">${escapeHtml(d.summary)}</div>`;
+    if (d.people) detailHtml += `<div style="font-size:10px;color:#4ac0ff;margin-top:2px;">${escapeHtml(d.people)}</div>`;
+    if (d.stream) detailHtml += `<div style="font-size:10px;color:#4ac0ff;margin-top:2px;">${escapeHtml(d.stream)}${d.who ? ' — ' + escapeHtml(d.who) : ''}</div>`;
+    html += `<div class="topic-card priority-info" style="display:flex;justify-content:space-between;align-items:start;">
+      <div style="flex:1;min-width:0;">
         <div class="topic-title">${escapeHtml(item.label)}</div>
-        <div style="font-size:9px;color:#64748b;">${item.type} &bull; added ${timeStr(item.added)}</div>
+        ${detailHtml}
+        <div style="font-size:9px;color:#64748b;margin-top:4px;">${item.type} &bull; added ${timeStr(item.added)}</div>
       </div>
-      <div style="flex-shrink:0;">
+      <div style="flex-shrink:0;margin-left:8px;">
         <span style="cursor:pointer;color:#34d399;font-size:14px;" onclick="resolveBacklogItem(${i})" title="Resolve">&#10003;</span>
         <span style="cursor:pointer;color:#f87171;font-size:14px;margin-left:8px;" onclick="removeBacklogItem(${i})" title="Remove">&#10005;</span>
       </div>
