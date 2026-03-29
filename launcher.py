@@ -315,6 +315,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             )
             events = resp.json() if resp.status_code == 200 else []
 
+            # Filter out simulator/load_test events
+            _fake_sources = {"load_test", "git_simulator", "slack_simulator",
+                             "p4v_simulator", "email_simulator", "youtube_simulator"}
+            events = [e for e in events
+                      if (e.get("raw") or {}).get("source", "") not in _fake_sources]
+
             if not events:
                 self._json_response({"topics": [], "needs_action": [], "conflicts": [], "people": {}})
                 return

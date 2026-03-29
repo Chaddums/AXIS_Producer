@@ -80,6 +80,38 @@ async def update_event_status(
     return {"ok": True, "event": result}
 
 
+@router.delete("/{event_id}")
+async def delete_event(event_id: int, user: dict = Depends(auth.get_current_user)):
+    event = db.get_event_by_id(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    if event["team_id"] not in user.get("teams", []):
+        raise HTTPException(status_code=403, detail="Not a member of this team")
+    db.client().table("events").delete().eq("id", event_id).execute()
+    return {"ok": True}
+
+
+@router.delete("")
+async def delete_events_bulk(
+    team_id: str = Query(...),
+    source: str = Query(None, description="Delete events matching raw->source"),
+    user: dict = Depends(auth.get_current_user),
+):
+    """Bulk delete events by team + source filter."""
+    if team_id not in user.get("teams", []):
+        raise HTTPException(status_code=403, detail="Not a member of this team")
+    if not source:
+        raise HTTPException(status_code=400, detail="source filter required for bulk delete")
+
+    sources = [s.strip() for s in source.split(",")]
+    total = 0
+    for src in sources:
+        res = db.client().table("events").delete().eq("team_id", team_id).eq(
+            "raw->>source", src).execute()
+        total += len(res.data) if res.data else 0
+    return {"ok": True, "deleted": total}
+
+
 @router.post("/batch")
 async def push_events_batch(
     events: list[EventIn],
