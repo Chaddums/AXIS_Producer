@@ -95,22 +95,33 @@ async def delete_event(event_id: int, user: dict = Depends(auth.get_current_user
 async def delete_events_bulk(
     team_id: str = Query(...),
     source: str = Query(None, description="Delete events matching raw->source"),
+    event_type: str = Query(None, description="Delete events matching event_type (comma-separated)"),
+    all: bool = Query(False, description="Delete ALL events for this team"),
     user: dict = Depends(auth.get_current_user),
 ):
-    """Bulk delete events by team + source filter."""
+    """Bulk delete events by team + optional filters."""
     if team_id not in user.get("teams", []):
         raise HTTPException(status_code=403, detail="Not a member of this team")
-    if not source:
-        raise HTTPException(status_code=400, detail="source filter required for bulk delete")
+    if not source and not event_type and not all:
+        raise HTTPException(status_code=400, detail="Provide source, event_type, or all=true")
 
-    sources = set(s.strip() for s in source.split(","))
     total = 0
-    # Paginate: fetch events, filter by source in Python, delete by ID
     while True:
-        fetch = db.client().table("events").select("id,raw").eq(
-            "team_id", team_id).limit(500).execute()
-        ids = [e["id"] for e in (fetch.data or [])
-               if (e.get("raw") or {}).get("source", "") in sources]
+        q = db.client().table("events").select("id,raw,event_type").eq("team_id", team_id).limit(500)
+        if event_type:
+            types = [t.strip() for t in event_type.split(",")]
+            q = q.in_("event_type", types)
+        fetch = q.execute()
+        rows = fetch.data or []
+        if not rows:
+            break
+
+        if source:
+            sources = set(s.strip() for s in source.split(","))
+            ids = [e["id"] for e in rows if (e.get("raw") or {}).get("source", "") in sources]
+        else:
+            ids = [e["id"] for e in rows]
+
         if not ids:
             break
         for i in range(0, len(ids), 50):
