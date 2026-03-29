@@ -1161,6 +1161,10 @@ function markResolved(type, idx) {
   _resolved.push({ type, idx, label, resolved: new Date().toISOString() });
   saveResolved();
   _sendFeedback('resolve', label, type, '');
+  // Sync to backend if this is a feed event
+  if (type === 'event' && BACKEND_URL && AUTH_TOKEN) {
+    updateEventStatus(idx, 'resolved').catch(() => {});
+  }
   const el = _findCard(type, idx);
   if (el) {
     const threadEl = el.nextElementSibling;
@@ -1176,6 +1180,10 @@ function dismissItem(type, idx) {
   _dismissed.add(`${type}-${idx}`);
   saveDismissed();
   _sendFeedback('dismiss', label, type, '');
+  // Sync to backend if this is a feed event
+  if (type === 'event' && BACKEND_URL && AUTH_TOKEN) {
+    updateEventStatus(idx, 'dismissed').catch(() => {});
+  }
   const el = _findCard(type, idx);
   if (el) {
     const threadEl = el.nextElementSibling;
