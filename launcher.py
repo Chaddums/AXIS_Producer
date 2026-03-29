@@ -127,6 +127,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         elif path == "/api/briefing":
             self._handle_briefing()
             return
+        elif path == "/api/synthesize":
+            self._handle_synthesize()
+            return
         elif path == "/api/terms":
             self._handle_terms_get()
             return
@@ -329,6 +332,44 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             )
 
             self._json_response(briefing)
+
+        except Exception as e:
+            self._json_response({"error": str(e)}, 500)
+
+    def _handle_synthesize(self):
+        """Generate a deep session synthesis report from the current session log."""
+        try:
+            from settings import Settings
+            settings = Settings.load()
+
+            log_path = os.path.join(os.path.abspath(settings.log_dir), "session_log.md")
+            if not os.path.exists(log_path):
+                self._json_response({"error": "No session log found"}, 404)
+                return
+
+            with open(log_path, "r", encoding="utf-8") as f:
+                transcript = f.read()
+
+            if len(transcript.split()) < 100:
+                self._json_response({"error": "Session too short for deep analysis"}, 400)
+                return
+
+            from session_synthesis import generate_session_report, save_session_report
+
+            api_key = settings.llm_api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+            report = generate_session_report(
+                transcript,
+                session_metadata={"participants": [settings.user_identity]},
+                provider=settings.llm_provider if settings.llm_api_key else "anthropic",
+                api_key=api_key,
+                model=settings.llm_model,
+                ollama_url=settings.ollama_url,
+            )
+
+            report_path = save_session_report(
+                report, output_dir=os.path.abspath(settings.log_dir))
+
+            self._json_response({"report": report, "path": report_path})
 
         except Exception as e:
             self._json_response({"error": str(e)}, 500)

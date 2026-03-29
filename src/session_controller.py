@@ -622,6 +622,9 @@ class SessionController:
                                 "session_log.md")
         self._run_digest(log_path)
 
+        # Run deep session synthesis (the money feature)
+        self._run_session_synthesis(log_path)
+
         # Resume detecting
         if self.settings.auto_detect:
             self.start_detecting()
@@ -638,6 +641,75 @@ class SessionController:
                        verbose=self.settings.verbose)
         except Exception as e:
             print(f"  [controller] digest failed (non-fatal): {e}")
+
+    def _run_session_synthesis(self, log_path: str):
+        """Run deep post-session analysis — communication dynamics, agreement/disagreement."""
+        try:
+            if not os.path.exists(log_path):
+                return
+
+            with open(log_path, "r", encoding="utf-8") as f:
+                transcript = f.read()
+
+            if len(transcript.split()) < 100:
+                if self.settings.verbose:
+                    print("  [synthesis] too short for deep analysis")
+                return
+
+            from session_synthesis import generate_session_report, save_session_report
+
+            if self.settings.verbose:
+                print("  [synthesis] generating deep session report...")
+
+            # Gather metadata
+            metadata = {
+                "participants": [self.settings.user_identity],
+                "duration": f"{self.batch_count * self.settings.batch_interval // 60} min (approx)",
+            }
+
+            api_key = self.settings.llm_api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+            report = generate_session_report(
+                transcript,
+                session_metadata=metadata,
+                provider=self.settings.llm_provider if self.settings.llm_api_key else "anthropic",
+                api_key=api_key,
+                model=self.settings.llm_model,
+                ollama_url=self.settings.ollama_url,
+            )
+
+            # Save report
+            report_path = save_session_report(
+                report, output_dir=os.path.abspath(self.settings.log_dir))
+
+            print(f"  [synthesis] session report saved: {report_path}")
+
+            # Open it automatically so the user sees it
+            try:
+                os.startfile(report_path)
+            except Exception:
+                pass
+
+            # Push summary to cloud if connected
+            if self._cloud_sync and self._backend_client:
+                self._backend_client.push_events([{
+                    "team_id": self.settings.team_id,
+                    "session_id": "session_report",
+                    "stream": "system",
+                    "event_type": "session_batch",
+                    "who": self.settings.user_identity,
+                    "summary": report.split("\n## ")[1].split("\n")[1][:200] if "\n## " in report else "Session report generated",
+                    "raw": {
+                        "priority": "info",
+                        "source": "session_synthesis",
+                        "items": [
+                            {"category": section.split("\n")[0], "text": "\n".join(section.split("\n")[1:]).strip()[:300]}
+                            for section in report.split("\n## ")[1:7]
+                        ],
+                    },
+                }])
+
+        except Exception as e:
+            print(f"  [synthesis] failed (non-fatal): {e}")
 
     # ----- Incoming message handling (Slack/email → focus advisor) -----
 
