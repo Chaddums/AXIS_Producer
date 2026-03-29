@@ -247,12 +247,18 @@ class SlackSimulator:
                     important = messages[:3]
                 summary = " | ".join(m["text"][:80] for m in important[:3])
 
+                # Use the most active person in the conversation as the author
+                who_counts = {}
+                for m in messages:
+                    who_counts[m["who"]] = who_counts.get(m["who"], 0) + 1
+                top_who = max(who_counts, key=who_counts.get)
+
                 self.backend.push_events([{
                     "team_id": self.team_id,
                     "session_id": f"slack_{channel.replace('#', '')}",
                     "stream": "slack",
                     "event_type": "session_batch",
-                    "who": "Slack",
+                    "who": top_who,
                     "area": channel,
                     "summary": summary,
                     "raw": {
