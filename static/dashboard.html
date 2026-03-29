@@ -1667,10 +1667,11 @@ function renderFeed(newEvents) {
   const actionPanel = document.getElementById('actionable-panel');
   const activityPanel = document.getElementById('activity-panel');
 
-  // Count for badges
+  // Count for badges — exclude presence from activity
   const topOnly = allEvents.filter(e => !e.parent_id);
-  const actionCount = topOnly.filter(e => isActionable(e)).length;
-  const activityCount = topOnly.length - actionCount;
+  const nonPresence = topOnly.filter(e => e.event_type !== 'presence');
+  const actionCount = nonPresence.filter(e => isActionable(e)).length;
+  const activityCount = nonPresence.length - actionCount;
   document.getElementById('actionable-badge').textContent = actionCount;
   document.getElementById('activity-badge').textContent = activityCount;
 
@@ -1678,8 +1679,9 @@ function renderFeed(newEvents) {
     // Remove empty state placeholders
     for (const el of document.querySelectorAll('.feed-empty')) el.remove();
 
-    const actionNew = newEvents.filter(e => isActionable(e));
-    const activityNew = newEvents.filter(e => !isActionable(e));
+    const visible = newEvents.filter(e => e.event_type !== 'presence');
+    const actionNew = visible.filter(e => isActionable(e));
+    const activityNew = visible.filter(e => !isActionable(e));
 
     // Actionable column: pinned criticals at top, then rest
     if (actionNew.length) {
@@ -1733,8 +1735,8 @@ function renderFeed(newEvents) {
       }
     }
   } else if (actionPanel.children.length === 0 && activityPanel.children.length === 0 && allEvents.length > 0) {
-    // Initial full render
-    const topEvts = topOnly;
+    // Initial full render — exclude presence
+    const topEvts = nonPresence;
     const actionEvts = topEvts.filter(e => isActionable(e));
     const activityEvts = topEvts.filter(e => !isActionable(e));
 
