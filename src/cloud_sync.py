@@ -321,44 +321,18 @@ class CloudSync:
                 self._handle_remote(event)
 
     def _maybe_synthesize_backend(self):
+        """Local synthesis — group events by person/theme, no LLM call needed."""
         now = time.time()
         if now - self._last_synthesis < self._synthesis_interval:
             return
         self._last_synthesis = now
 
-        # Use backend proxy for synthesis
-        minutes = (self._synthesis_interval // 60) + 5
-        since = datetime.now(timezone.utc).isoformat()
         events = self._backend.poll_events(self._team_id, limit=200)
-
         if len(events) < 3:
             return
 
-        lines = []
-        for e in events:
-            ts = e.get("ts", "?")
-            who = e.get("who", "?")
-            stream = e.get("stream", "?")
-            summary = e.get("summary", "")
-            files = e.get("files", [])
-            files_str = f" [{', '.join(files)}]" if files else ""
-            lines.append(f"[{ts}] {who} ({stream}): {summary}{files_str}")
-
-        event_text = "\n".join(lines)
-        prompt = f"Here are the recent events:\n\n{event_text}"
-
-        result = self._backend.claude_batch(
-            self._team_id, SYNTHESIS_PROMPT, prompt,
-            model=SYNTHESIS_MODEL, max_tokens=SYNTHESIS_MAX_TOKENS,
-        )
-
-        if not result or result.get("_error"):
-            return
-
-        content = result.get("content", [])
-        summary_text = content[0].get("text", "") if content else ""
-
-        if not summary_text or summary_text.strip() == "[not enough activity]":
+        summary_text = self._local_synthesis(events)
+        if not summary_text:
             return
 
         timestamps = [e.get("ts", "") for e in events if e.get("ts")]
@@ -403,6 +377,40 @@ class CloudSync:
         for event in events:
             self._handle_remote(event)
 
+    @staticmethod
+    def _local_synthesis(events: list[dict]) -> str:
+        """Synthesize events locally — group by person and stream, no LLM needed."""
+        from collections import defaultdict, Counter
+
+        by_person = defaultdict(list)
+        streams = Counter()
+        for e in events:
+            who = e.get("who", "?")
+            if e.get("stream") == "presence" or e.get("event_type") == "presence":
+                continue
+            summary = e.get("summary", "")
+            if not summary:
+                continue
+            by_person[who].append(summary[:100])
+            streams[e.get("stream", "?")] += 1
+
+        if not by_person:
+            return ""
+
+        lines = [f"Team activity ({len(events)} events, {len(by_person)} people):"]
+        lines.append(f"Sources: {', '.join(f'{s}({c})' for s, c in streams.most_common(5))}")
+        lines.append("")
+
+        for who, summaries in sorted(by_person.items(), key=lambda x: -len(x[1])):
+            lines.append(f"**{who}** ({len(summaries)} items):")
+            for s in summaries[:3]:
+                lines.append(f"  - {s}")
+            if len(summaries) > 3:
+                lines.append(f"  ... and {len(summaries) - 3} more")
+            lines.append("")
+
+        return "\n".join(lines)
+
     def _maybe_synthesize_legacy(self):
         now = time.time()
         if now - self._last_synthesis < self._synthesis_interval:
@@ -419,7 +427,7 @@ class CloudSync:
             return
 
         try:
-            summary = self._synthesize_legacy(events)
+            summary = self._local_synthesis(events)
         except Exception as e:
             log.warning(f"Synthesis failed: {e}")
             return

@@ -79,27 +79,45 @@ def generate_standup(calendar_events: list[CalendarEvent] = None,
     """Morning standup: yesterday's progress, today's plan, blockers."""
     sections = []
 
-    # Yesterday's digest items
+    # Yesterday's digest items — filtered by triage grade (actionable + needs-context only)
     db = DigestDB(db_path)
     try:
-        recent = db.recent(limit=30)
+        recent = db.recent(limit=50)
         yesterday = datetime.now() - timedelta(days=1)
         yesterday_items = [r for r in recent
-                           if r.get("session_date", "")[:10] >= yesterday.strftime("%Y-%m-%d")]
+                           if r.get("session_date", "")[:10] >= yesterday.strftime("%Y-%m-%d")
+                           and r.get("triage_grade", "") in ("actionable", "needs-context")]
 
         if yesterday_items:
             decisions = [r for r in yesterday_items if r["tag"] == "DECISION"]
             actions = [r for r in yesterday_items if r["tag"] == "ACTION"]
+            blockers_items = [r for r in yesterday_items if r["tag"] == "BLOCKER"]
             if decisions:
                 sections.append("**Yesterday — Decisions:**")
-                for d in decisions[:5]:
+                for d in sorted(decisions, key=lambda x: -x.get("triage_score", 0))[:5]:
                     sections.append(f"- {d['text']}")
             if actions:
                 sections.append("**Yesterday — Actions committed:**")
-                for a in actions[:5]:
+                for a in sorted(actions, key=lambda x: -x.get("triage_score", 0))[:5]:
                     sections.append(f"- {a['text']}")
+            if blockers_items:
+                sections.append("**Yesterday — Blockers raised:**")
+                for b in blockers_items[:3]:
+                    sections.append(f"- {b['text']}")
         else:
-            sections.append("*No session notes from yesterday.*")
+            sections.append("*No significant session notes from yesterday.*")
+
+        # Session trend
+        summaries = db.get_session_summaries(limit=5)
+        if len(summaries) >= 2:
+            latest = summaries[0]
+            prev = summaries[1]
+            latest_total = latest.get("total_items", 0)
+            prev_total = prev.get("total_items", 0)
+            if latest_total > 0 and prev_total > 0:
+                change = latest_total - prev_total
+                direction = "up" if change > 0 else "down" if change < 0 else "flat"
+                sections.append(f"\n*Trend: {latest_total} items last session ({direction} from {prev_total})*")
     finally:
         db.close()
 
@@ -230,22 +248,29 @@ def generate_wrapup(repo_path: str = "",
         recent = db.recent(limit=50)
         today_items = [r for r in recent if r.get("session_date", "")[:10] == today]
 
-        if today_items:
-            by_tag = {}
-            for r in today_items:
-                by_tag.setdefault(r["tag"], []).append(r)
+        # Filter to actionable + needs-context only
+        today_items = [r for r in today_items
+                       if r.get("triage_grade", "") in ("actionable", "needs-context")]
 
-            sections.append(f"**Today's session output ({len(today_items)} items):**")
-            for tag in ["DECISION", "ACTION", "BLOCKER", "IDEA", "QUESTION", "WATCH"]:
-                items = by_tag.get(tag, [])
-                if items:
-                    sections.append(f"\n*{tag}* ({len(items)}):")
-                    for item in items[:4]:
-                        sections.append(f"- {item['text'][:70]}")
-                    if len(items) > 4:
-                        sections.append(f"  ...+{len(items) - 4} more")
+        if today_items:
+            # Group by theme first, then by tag within theme
+            by_theme = {}
+            for r in today_items:
+                theme = r.get("theme", "Other") or "Other"
+                by_theme.setdefault(theme, []).append(r)
+
+            sections.append(f"**Today's highlights ({len(today_items)} actionable items):**")
+            for theme, items in sorted(by_theme.items()):
+                sections.append(f"\n**{theme}:**")
+                # Sort by score, show top items
+                sorted_items = sorted(items, key=lambda x: -x.get("triage_score", 0))
+                for item in sorted_items[:4]:
+                    tag = item["tag"]
+                    sections.append(f"- [{tag}] {item['text'][:80]}")
+                if len(items) > 4:
+                    sections.append(f"  ...+{len(items) - 4} more in this area")
         else:
-            sections.append("*No session notes captured today.*")
+            sections.append("*No actionable session notes captured today.*")
     finally:
         db.close()
 

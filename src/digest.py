@@ -185,6 +185,44 @@ def theme_items(items_text: str, dry_run: bool = False) -> str:
     return response.content[0].text
 
 
+def _theme_items_locally(triage_results: list, batches: list[dict]) -> str:
+    """Theme items using local triage scoring instead of LLM call.
+
+    Builds the same markdown format that parse_themed_output() expects,
+    but using the theme assignments from triage.route_to_theme().
+    """
+    if not triage_results:
+        return ""
+
+    # Build time lookup from batches
+    time_lookup = {}
+    for batch in batches:
+        for item in batch["items"]:
+            time_lookup[item["text"][:60].lower()] = batch["time"]
+
+    # Group by theme
+    by_theme = {}
+    for tr in triage_results:
+        theme = tr.get("theme", "Other") or "Other"
+        if theme not in by_theme:
+            by_theme[theme] = []
+        tag = tr.get("tag", "DISCUSSION")
+        text = tr.get("text", "")
+        time = time_lookup.get(text[:60].lower(), "")
+        by_theme[theme].append({"tag": tag, "text": text, "time": time})
+
+    # Format as markdown (same format as LLM output)
+    lines = []
+    for theme, items in sorted(by_theme.items()):
+        lines.append(f"### {theme}")
+        for item in items:
+            time_str = f" ({item['time']})" if item["time"] else ""
+            lines.append(f"- [{item['tag']}] {item['text']}{time_str}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def parse_themed_output(themed_text: str) -> list[dict]:
     """Parse Claude's themed output back into structured items.
 
@@ -493,12 +531,18 @@ def run_digest(log_path: str, output_path: str, dry_run: bool = False,
     except Exception:
         pass  # analytics failure is non-fatal
 
-    items_text = format_items_for_claude(batches)
-
+    # Theme items locally using triage results (no LLM call needed)
     if verbose:
-        print(f"  [digest] sending {total_items} items to Claude for theming...")
+        print(f"  [digest] theming {total_items} items locally via triage...")
 
-    themed = theme_items(items_text, dry_run=dry_run)
+    themed = _theme_items_locally(triage_result.get("results", []), batches)
+
+    if not themed:
+        # Fallback: LLM theming if local produced nothing
+        if verbose:
+            print("  [digest] local theming empty, falling back to LLM...")
+        items_text = format_items_for_claude(batches)
+        themed = theme_items(items_text, dry_run=dry_run)
 
     if not themed:
         if verbose:
