@@ -446,10 +446,16 @@ class SessionController:
         mic = AudioCapture(chunk_queue, self._stop_event,
                            device=self.settings.mic_device, verbose=verbose)
 
-        # Loopback capture
-        loopback = LoopbackCapture(chunk_queue, self._stop_event,
-                                   device=self.settings.loopback_device,
-                                   verbose=verbose)
+        # Loopback capture (optional — can segfault on virtual audio devices like Parsec)
+        loopback = None
+        if self.settings.loopback_device != -1:
+            try:
+                loopback = LoopbackCapture(chunk_queue, self._stop_event,
+                                           device=self.settings.loopback_device,
+                                           verbose=verbose)
+            except Exception as e:
+                print(f"  [controller] loopback init failed (non-fatal): {e}")
+                loopback = None
 
         # Transcriber
         transcriber = Transcriber(chunk_queue, self._stop_event,
@@ -489,10 +495,13 @@ class SessionController:
         # Start threads
         self._threads = [
             threading.Thread(target=mic.run, name="mic-capture", daemon=True),
-            threading.Thread(target=loopback.run, name="loopback-capture", daemon=True),
             threading.Thread(target=transcriber.run, name="transcriber", daemon=True),
             threading.Thread(target=self._producer.run, name="producer", daemon=True),
         ]
+        if loopback:
+            self._threads.append(
+                threading.Thread(target=loopback.run, name="loopback-capture", daemon=True)
+            )
 
         # Chat monitor (optional)
         if self.settings.chat_monitor:
